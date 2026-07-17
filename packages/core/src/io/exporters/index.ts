@@ -200,13 +200,7 @@ export function exportExcelCsv(doc: MindMapDocument, sheetId?: string): string {
 export function exportPptxOutline(doc: MindMapDocument, sheet?: Sheet): string {
   const target = sheet ?? doc.sheets[0];
   if (!target) return '';
-  const slides =
-    target.pitchSettings.slides.length > 0
-      ? target.pitchSettings.slides
-          .slice()
-          .sort((a, b) => a.order - b.order)
-          .map((s) => findTitle(target.rootTopic, s.topicId) ?? s.topicId)
-      : collectTitles(target.rootTopic);
+  const slides = collectTitles(target.rootTopic);
   const sections = slides
     .map(
       (title, i) =>
@@ -249,15 +243,6 @@ export async function exportTextBundleZip(doc: MindMapDocument): Promise<Uint8Ar
   folder?.file('text.md', textMd);
   const buf = await zip.generateAsync({ type: 'uint8array' });
   return buf;
-}
-
-function findTitle(root: Topic, id: string): string | null {
-  if (root.id === id) return root.title;
-  for (const c of root.children) {
-    const f = findTitle(c, id);
-    if (f) return f;
-  }
-  return null;
 }
 
 function collectTitles(root: Topic): string[] {

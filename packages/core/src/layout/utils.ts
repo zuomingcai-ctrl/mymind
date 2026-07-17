@@ -76,6 +76,38 @@ export function finalizeResult(
   return { nodes, edges, extraShapes, bounds };
 }
 
+/** Flip a top-down tree so the root sits at the bottom (bottom-up). */
+export function flipLayoutVertical(
+  nodes: Map<string, LayoutNode>,
+  edges: LayoutEdge[],
+  extraShapes: ExtraShape[] = [],
+): void {
+  let minY = Infinity;
+  let maxY = -Infinity;
+  for (const n of nodes.values()) {
+    minY = Math.min(minY, n.y);
+    maxY = Math.max(maxY, n.y + n.height);
+  }
+  for (const s of extraShapes) {
+    minY = Math.min(minY, s.bounds.y);
+    maxY = Math.max(maxY, s.bounds.y + s.bounds.height);
+  }
+  if (!Number.isFinite(minY) || !Number.isFinite(maxY)) return;
+  const pivot = minY + maxY;
+  for (const n of nodes.values()) {
+    n.y = pivot - n.y - n.height;
+  }
+  for (const e of edges) {
+    e.points = e.points.map((p) => ({ x: p.x, y: pivot - p.y }));
+  }
+  for (const s of extraShapes) {
+    s.bounds = {
+      ...s.bounds,
+      y: pivot - s.bounds.y - s.bounds.height,
+    };
+  }
+}
+
 export function layoutStructureElements(
   sheet: Sheet,
   base: LayoutResult,

@@ -41,11 +41,10 @@ const props = defineProps<{
   showPanel: boolean;
   /** right panel showing marker/sticker/illustration library (TB-005) */
   libraryPanelActive?: boolean;
-  /** right panel showing style/canvas/pitch properties (TB-006) */
+  /** right panel showing style/canvas properties (TB-006) */
   propertiesPanelActive?: boolean;
   showMinimap: boolean;
   branchFocusActive: boolean;
-  pitchActive: boolean;
   zenActive: boolean;
   selectedId: string | null;
 }>();
@@ -95,7 +94,6 @@ const emit = defineEmits<{
   'toggle-panel': [];
   'toggle-minimap': [];
   'toggle-branch-focus': [];
-  'toggle-pitch': [];
   'toggle-zen': [];
   fit: [];
   'search-ref': [el: unknown];
@@ -160,7 +158,6 @@ function onViewCommand(cmd: string) {
     panel: () => emit('toggle-panel'),
     minimap: () => emit('toggle-minimap'),
     focus: () => emit('toggle-branch-focus'),
-    pitch: () => emit('toggle-pitch'),
     zen: () => emit('toggle-zen'),
     fit: () => emit('fit'),
   };
@@ -270,9 +267,6 @@ function setSearchRef(el: unknown) {
             </el-dropdown-item>
             <el-dropdown-item divided command="focus" :icon="Aim" :disabled="!selectedId && !branchFocusActive">
               {{ branchFocusActive ? t('toolbar.exitFocus') : t('toolbar.branchFocus') }}
-            </el-dropdown-item>
-            <el-dropdown-item command="pitch">
-              {{ pitchActive ? t('toolbar.exitPitch') : t('toolbar.pitch') }}
             </el-dropdown-item>
             <el-dropdown-item command="zen" :icon="zenActive ? Hide : FullScreen">
               {{ zenActive ? t('toolbar.exitZen') : 'ZEN' }}

@@ -73,6 +73,16 @@ describe('layout', () => {
     expect(child.y).toBeGreaterThan(root.y);
   });
 
+  it('tree-chart bottom-up places root below children', () => {
+    const doc = createDocument('x', 'tree-chart');
+    doc.sheets[0]!.structureOptions = { type: 'tree-chart', direction: 'bottom-up' };
+    let d = new AddTopicCommand(doc.sheets[0]!.id, doc.sheets[0]!.rootTopic.id, 'c1').execute(doc);
+    const rootId = d.sheets[0]!.rootTopic.id;
+    const childId = d.sheets[0]!.rootTopic.children[0]!.id;
+    const result = registry.layout(d.sheets[0]!, measure);
+    expect(result.nodes.get(rootId)!.y).toBeGreaterThan(result.nodes.get(childId)!.y);
+  });
+
   it('collapsed nodes hide descendants from layout', () => {
     const doc = createDocument();
     const sheet = doc.sheets[0]!;

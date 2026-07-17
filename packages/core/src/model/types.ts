@@ -364,7 +364,15 @@ export interface LayoutEdge {
 
 export interface ExtraShape {
   id: string;
-  type: 'brace' | 'matrix-cell' | 'timeline-axis' | 'boundary' | 'summary' | 'callout' | 'zone';
+  type:
+    | 'brace'
+    | 'matrix-cell'
+    | 'timeline-axis'
+    | 'boundary'
+    | 'summary'
+    | 'callout'
+    | 'zone'
+    | 'table-cell';
   bounds: Rect;
   path?: string;
   label?: string;
@@ -427,15 +435,18 @@ export function defaultStructureOptions(type: StructureType): StructureOptions {
     case 'timeline':
       return { type: 'timeline', axis: 'horizontal', alternate: true, showScale: true };
     case 'fishbone':
-      return { type: 'fishbone', headPosition: 'left', branchAngle: 45 };
+      return { type: 'fishbone', headPosition: 'right', branchAngle: 45 };
     case 'matrix':
       return { type: 'matrix', rows: 2, cols: 2, titles: ['S', 'W', 'O', 'T'], assignMode: 'auto' };
     case 'brace-map':
-      return { type: 'brace-map', braceSide: 'left' };
+      return { type: 'brace-map', braceSide: 'right', partPosition: 'opposite' };
     case 'tree-table':
       return {
         type: 'tree-table',
-        columns: [{ id: 'title', field: 'title', width: 200, label: '主题' }],
+        columns: [
+          { id: 'title', field: 'title', width: 200, label: '主题' },
+          { id: 'note', field: 'note', width: 160, label: '备注' },
+        ],
         showTreeLine: true,
       };
   }

@@ -75,11 +75,6 @@ export {
 export {
   InsertParentTopicCommand,
   CopySheetCommand,
-  UpdatePitchSettingsCommand,
-  AddPitchSlideCommand,
-  DeletePitchSlideCommand,
-  ReorderPitchSlidesCommand,
-  UpdatePitchSlideStyleCommand,
   DeleteMarkerCommand,
   ReplaceTextCommand,
   DeleteLabelCommand,

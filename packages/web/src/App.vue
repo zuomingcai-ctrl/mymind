@@ -99,7 +99,6 @@ import {
 import { useSearch } from './composables/useSearch';
 import { useZenMode } from './composables/useZenMode';
 import { useAutoSave } from './composables/useAutoSave';
-import { usePitchMode } from './composables/usePitchMode';
 import { useClipboard, isEditableTarget } from './composables/useClipboard';
 import { useContextMenu } from './composables/useContextMenu';
 import { useRecentInserts } from './composables/useRecentInserts';
@@ -122,15 +121,6 @@ const {
   includeRelationships,
 } = useSearch();
 const { active: zenActive, toggle: toggleZen } = useZenMode();
-const {
-  active: pitchActive,
-  enter: enterPitch,
-  exit: exitPitch,
-  next: pitchNext,
-  prev: pitchPrev,
-  currentTopicId: pitchTopicId,
-  currentSlide,
-} = usePitchMode();
 useAutoSave();
 const { focusId: branchFocusId, visibleIds: branchVisibleIds, focus: focusBranch, clear: clearBranchFocus } = useBranchFocus();
 useLabelFilter();
@@ -143,7 +133,7 @@ const replaceFind = ref('');
 const replaceWith = ref('');
 const showOutliner = ref(true);
 const showPanel = ref(true);
-/** XMind-style right panel: properties (样式/画布/演说) vs library (标记/贴纸/插画) */
+/** XMind-style right panel: properties (样式/画布) vs library (标记/贴纸/插画) */
 const rightPanelMode = ref<'properties' | 'library'>('properties');
 const showMinimap = ref(true);
 const selectedDecorationId = ref<string | null>(null);
@@ -331,7 +321,7 @@ const keyboardCaptureStyle = ref({
 });
 
 function focusKeyboardCapture() {
-  if (zenActive.value || pitchActive.value) return;
+  if (zenActive.value) return;
   if (editingTopic.value || editingRelationship.value) return;
   syncKeyboardCapturePosition();
   const el = keyboardCaptureRef.value;
@@ -356,7 +346,7 @@ function syncKeyboardCapturePosition() {
 function onKeyboardCaptureBlur() {
   // Keep canvas keyboard focus unless another intentional editor took it.
   nextTick(() => {
-    if (zenActive.value || pitchActive.value) return;
+    if (zenActive.value) return;
     if (editingTopic.value || editingRelationship.value) return;
     const active = document.activeElement;
     if (!(active instanceof HTMLElement)) {
@@ -372,7 +362,7 @@ function onKeyboardCaptureBlur() {
 }
 
 function canStartCanvasEdit(e: KeyboardEvent | Event): boolean {
-  if (!activeSheet.value || !selectedId.value || zenActive.value || pitchActive.value) return false;
+  if (!activeSheet.value || !selectedId.value || zenActive.value) return false;
   const t = (e.target as HTMLElement | null) ?? document.activeElement;
   if (!(t instanceof HTMLElement)) return true;
   if (t.closest('.topic-text-editor')) return false;
@@ -1071,10 +1061,6 @@ function onKeyDown(e: KeyboardEvent) {
     toggleZen();
     return;
   }
-  if (e.key === 'Escape' && pitchActive.value) {
-    exitPitch();
-    return;
-  }
 
   if (e.ctrlKey && e.key === 'f') {
     e.preventDefault();
@@ -1125,19 +1111,6 @@ function onKeyDown(e: KeyboardEvent) {
       dispatch(cmd);
     }
     return;
-  }
-
-  if (pitchActive.value) {
-    if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-      e.preventDefault();
-      pitchNext();
-      return;
-    }
-    if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-      e.preventDefault();
-      pitchPrev();
-      return;
-    }
   }
 
   if (!activeSheet.value || !selectedId.value) return;
@@ -1336,7 +1309,7 @@ function onOpenMarkers() {
   rightPanelMode.value = 'library';
 }
 
-/** XMind: panel button → style/canvas/pitch properties; click again to hide */
+/** XMind: panel button → style/canvas properties; click again to hide */
 function onOpenProperties() {
   if (showPanel.value && rightPanelMode.value === 'properties') {
     showPanel.value = false;
@@ -1626,7 +1599,6 @@ onUnmounted(() => {
       :properties-panel-active="showPanel && rightPanelMode === 'properties'"
       :show-minimap="showMinimap"
       :branch-focus-active="!!branchFocusId"
-      :pitch-active="pitchActive"
       :zen-active="zenActive"
       :selected-id="selectedId"
       @new="onRequestNew"
@@ -1673,7 +1645,6 @@ onUnmounted(() => {
       @toggle-panel="onTogglePanel"
       @toggle-minimap="showMinimap = !showMinimap"
       @toggle-branch-focus="onToggleBranchFocus"
-      @toggle-pitch="pitchActive ? exitPitch() : enterPitch()"
       @toggle-zen="toggleZen"
       @fit="fitInitial"
       @search-ref="onSearchRef"
@@ -1711,9 +1682,9 @@ onUnmounted(() => {
 
     <main v-if="mindDocument" class="main">
       <OutlinerView
-        v-if="!zenActive && !pitchActive && showOutliner"
+        v-if="!zenActive && showOutliner"
         :sheet="activeSheet"
-        :selected-ids="pitchActive ? (pitchTopicId ? [pitchTopicId] : []) : selection"
+        :selected-ids="selection"
         @select="onOutlinerSelect"
         @move="onTopicMove"
       />
@@ -1721,7 +1692,7 @@ onUnmounted(() => {
         <CanvasView
           :sheet="activeSheet"
           :viewport="viewport"
-          :selected-ids="pitchActive ? (pitchTopicId ? [pitchTopicId] : []) : selection"
+          :selected-ids="selection"
           :visible-topic-ids="branchVisibleIds"
           :align-guides="alignGuides"
           :selected-decoration-id="selectedDecorationId"
@@ -1758,17 +1729,16 @@ onUnmounted(() => {
         />
       </div>
       <PropertyPanel
-        v-if="!zenActive && !pitchActive && showPanel && rightPanelMode === 'properties'"
+        v-if="!zenActive && showPanel && rightPanelMode === 'properties'"
         :sheet="activeSheet"
         :selected-id="selectedId"
         :selected-structure="selectedStructure"
         :focus-field="panelFocus"
         @focus-consumed="panelFocus = null"
-        @start-pitch="enterPitch"
         @export-zone="onExportZone"
       />
       <MarkerLibraryPanel
-        v-else-if="!zenActive && !pitchActive && showPanel && rightPanelMode === 'library'"
+        v-else-if="!zenActive && showPanel && rightPanelMode === 'library'"
         :sheet="activeSheet"
         :selected-id="selectedId"
         @add-decoration="onAddDecoration"
@@ -1788,13 +1758,6 @@ onUnmounted(() => {
       @insert="onInsertAction"
       @close="closeCtxMenu"
     />
-
-    <div v-if="pitchActive" class="pitch-bar" :style="{ background: currentSlide?.backgroundColor ?? undefined }">
-      <el-button @click="pitchPrev">上一帧</el-button>
-      <span>{{ pitchTopicId ?? '—' }}</span>
-      <el-button @click="pitchNext">下一帧</el-button>
-      <el-button type="danger" plain @click="exitPitch">退出演说</el-button>
-    </div>
 
     <div class="sr-only" aria-live="polite">{{ selectionAnnounce }}</div>
 
@@ -1839,7 +1802,7 @@ onUnmounted(() => {
     />
 
     <TopicTextEditor
-      v-if="editingTopic && activeSheet && !zenActive && !pitchActive"
+      v-if="editingTopic && activeSheet && !zenActive"
       ref="canvasEditorRef"
       :key="editingTopic.topicId + String(editingTopic.initialText ?? '')"
       :sheet-id="activeSheet.id"
@@ -1853,7 +1816,7 @@ onUnmounted(() => {
       @close="closeEditor"
     />
     <MarkerEditPopover
-      v-if="editingMarker && !zenActive && !pitchActive"
+      v-if="editingMarker && !zenActive"
       :topic-id="editingMarker.topicId"
       :marker-id="editingMarker.markerId"
       :left="editingMarker.left"
@@ -1863,7 +1826,7 @@ onUnmounted(() => {
       @close="closeMarkerPopover"
     />
     <input
-      v-if="editingRelationship && !zenActive && !pitchActive"
+      v-if="editingRelationship && !zenActive"
       class="rel-title-editor"
       :style="{
         left: editingRelationship.left + 'px',
@@ -1957,15 +1920,6 @@ body,
 }
 .search-results li:hover {
   background: var(--el-fill-color-light);
-}
-.pitch-bar {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 16px;
-  padding: 8px;
-  background: #303133;
-  color: #fff;
 }
 .deco-toolbar {
   position: absolute;

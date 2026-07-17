@@ -10,6 +10,7 @@ import { buildMindmapCurvePoints } from './edge-paths.js';
 import {
   collectHidden,
   finalizeResult,
+  flipLayoutVertical,
   layoutSubtreeWidth,
   layoutTreeVertical,
   LEVEL_GAP,
@@ -198,7 +199,7 @@ function placeMindmapBranch(
 
 export function layoutTreeChart(
   root: Topic,
-  _options: StructureOptions,
+  options: StructureOptions,
   measure: MeasureFn,
 ): LayoutResult {
   const nodes = new Map<string, LayoutNode>();
@@ -209,6 +210,11 @@ export function layoutTreeChart(
   const rootSize = measure(root, 0);
   const totalWidth = layoutSubtreeWidth(root, 0, ctx);
   layoutTreeVertical(root, 0, totalWidth / 2 - rootSize.width / 2, 0, ctx);
+
+  const direction = options.type === 'tree-chart' ? options.direction : 'top-down';
+  if (direction === 'bottom-up') {
+    flipLayoutVertical(nodes, edges);
+  }
 
   return finalizeResult(nodes, edges);
 }

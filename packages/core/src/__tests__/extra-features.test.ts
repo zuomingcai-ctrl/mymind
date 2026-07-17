@@ -6,7 +6,6 @@ import {
   InsertParentTopicCommand,
   CopySheetCommand,
   ReplaceTextCommand,
-  AddPitchSlideCommand,
   listMarkers,
   listTemplates,
   exportPdf,
@@ -44,14 +43,6 @@ describe('extra v1 features', () => {
     const bus = new CommandBus(doc);
     bus.dispatch(new ReplaceTextCommand(doc.sheets[0]!.id, 'World', 'MyMind'));
     expect(bus.getDocument().sheets[0]!.rootTopic.title).toBe('Hello MyMind');
-  });
-
-  it('AddPitchSlideCommand appends slide', () => {
-    const doc = createDocument();
-    const bus = new CommandBus(doc);
-    const sheet = doc.sheets[0]!;
-    bus.dispatch(new AddPitchSlideCommand(sheet.id, sheet.rootTopic.id));
-    expect(bus.getDocument().sheets[0]!.pitchSettings.slides.length).toBe(1);
   });
 
   it('marker catalog has categories', () => {

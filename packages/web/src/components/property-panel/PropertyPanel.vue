@@ -20,10 +20,6 @@ import {
   DeleteMarkerCommand,
   listMarkers,
   markerGlyph,
-  AddPitchSlideCommand,
-  DeletePitchSlideCommand,
-  ReorderPitchSlidesCommand,
-  UpdatePitchSlideStyleCommand,
   UpdateZoneStyleCommand,
   UpdateAudioCommand,
   UpdateRelationshipTitleCommand,
@@ -45,7 +41,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'focus-consumed': [];
-  'start-pitch': [];
   'export-zone': [zoneId: string];
 }>();
 
@@ -233,59 +228,11 @@ function triggerAudioPick() {
   audioInput.value?.click();
 }
 
-function patchPitchSlide(slideId: string, patch: { backgroundColor?: string; transition?: 'none' | 'fade' | 'zoom' }) {
-  if (!props.sheet) return;
-  dispatch(new UpdatePitchSlideStyleCommand(props.sheet.id, slideId, patch));
-}
-
 function toggleMarker(id: string) {
   if (!props.sheet || !props.selectedId) return;
   const has = selectedTopic()?.markers.includes(id);
   if (has) dispatch(new DeleteMarkerCommand(props.sheet.id, props.selectedId, id));
   else dispatch(new AddMarkerCommand(props.sheet.id, props.selectedId, id));
-}
-
-const pitchSlides = computed(() => {
-  if (!props.sheet) return [];
-  return [...props.sheet.pitchSettings.slides].sort((a, b) => a.order - b.order);
-});
-
-function topicTitle(id: string): string {
-  if (!props.sheet) return id;
-  return findTopic(props.sheet.rootTopic, id)?.title ?? id;
-}
-
-function addPitchSlide() {
-  if (!props.sheet || !props.selectedId) return;
-  dispatch(new AddPitchSlideCommand(props.sheet.id, props.selectedId));
-}
-
-function removePitchSlide(slideId: string) {
-  if (!props.sheet) return;
-  dispatch(new DeletePitchSlideCommand(props.sheet.id, slideId));
-}
-
-function movePitchSlide(slideId: string, dir: -1 | 1) {
-  if (!props.sheet) return;
-  const ids = pitchSlides.value.map((s) => s.id);
-  const i = ids.indexOf(slideId);
-  const j = i + dir;
-  if (i < 0 || j < 0 || j >= ids.length) return;
-  const next = [...ids];
-  const tmp = next[i]!;
-  next[i] = next[j]!;
-  next[j] = tmp;
-  dispatch(new ReorderPitchSlidesCommand(props.sheet.id, next));
-}
-
-function autoPitchFromChildren() {
-  if (!props.sheet || !props.selectedId) return;
-  const topic = selectedTopic();
-  if (!topic) return;
-  const kids = topic.children.length ? topic.children : [topic];
-  for (const c of kids) {
-    dispatch(new AddPitchSlideCommand(props.sheet.id, c.id));
-  }
 }
 
 const borderLineType = computed({
@@ -764,53 +711,6 @@ const borderLineType = computed({
               </el-select>
             </el-form-item>
           </el-form>
-        </el-scrollbar>
-      </el-tab-pane>
-
-      <el-tab-pane label="演说" name="pitch">
-        <el-scrollbar class="tab-scroll">
-          <el-button type="primary" class="full-btn" @click="emit('start-pitch')">开始演说</el-button>
-          <div class="inline-row mt-8">
-            <el-button :disabled="!selectedId" @click="addPitchSlide">添加当前主题为帧</el-button>
-            <el-button :disabled="!selectedId" @click="autoPitchFromChildren">从子主题生成</el-button>
-          </div>
-          <el-empty v-if="!pitchSlides.length" description="暂无帧；演说时将按主题树顺序自动生成" :image-size="48" />
-          <el-table v-else :data="pitchSlides" size="small" class="mt-8">
-            <el-table-column label="帧" min-width="80">
-              <template #default="{ row }">{{ topicTitle(row.topicId) }}</template>
-            </el-table-column>
-            <el-table-column label="背景" width="70">
-              <template #default="{ row }">
-                <el-color-picker
-                  size="small"
-                  :model-value="row.backgroundColor ?? '#ffffff'"
-                  @change="(v: string | null) => v && patchPitchSlide(row.id, { backgroundColor: v })"
-                />
-              </template>
-            </el-table-column>
-            <el-table-column label="转场" width="90">
-              <template #default="{ row }">
-                <el-select
-                  size="small"
-                  :model-value="row.transition ?? 'none'"
-                  @change="(v: string) => patchPitchSlide(row.id, { transition: v as 'none' | 'fade' | 'zoom' })"
-                >
-                  <el-option label="无" value="none" />
-                  <el-option label="淡入" value="fade" />
-                  <el-option label="缩放" value="zoom" />
-                </el-select>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="110">
-              <template #default="{ row }">
-                <el-button-group>
-                  <el-button :icon="Top" size="small" @click="movePitchSlide(row.id, -1)" />
-                  <el-button :icon="Bottom" size="small" @click="movePitchSlide(row.id, 1)" />
-                  <el-button :icon="Close" size="small" type="danger" @click="removePitchSlide(row.id)" />
-                </el-button-group>
-              </template>
-            </el-table-column>
-          </el-table>
         </el-scrollbar>
       </el-tab-pane>
     </el-tabs>
