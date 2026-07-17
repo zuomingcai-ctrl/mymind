@@ -1,11 +1,13 @@
-import type { MindMapDocument } from '../model/types.js';
+import type { MindMapDocument, Topic } from '../model/types.js';
 import {
   createTopic,
-  findParentOfTopic,
+  findParentInSheet,
+  findTopicById,
   findTopicInSheet,
+  isFloatingTopicRoot,
   touchTopic,
   updateSheetInDocument,
-  updateTopicInTree,
+  updateTopicInSheet,
 } from '../model/factory.js';
 import { syncTitleFromRuns, plainToRuns } from '../model/inline-run.js';
 import type { Command } from './types.js';
@@ -28,51 +30,55 @@ export class AddTopicCommand implements Command {
 
     return updateSheetInDocument(state, this.sheetId, (sheet) => {
       if (this.asSibling) {
-        const parent = findParentOfTopic(sheet.rootTopic, this.parentId);
-        if (!parent) return sheet;
+        const parent = findParentInSheet(sheet, this.parentId);
+        if (!parent) {
+          // Floating root (e.g. summary topic) or missing parent: add as child instead.
+          if (!findTopicInSheet(sheet, this.parentId)) return sheet;
+          return addChildInSheet(sheet, this.parentId, newTopic, this.index);
+        }
         const idx = this.index ?? parent.children.length;
-        const children = [...parent.children];
-        children.splice(idx, 0, newTopic);
-        return {
-          ...sheet,
-          rootTopic: updateTopicInTree(sheet.rootTopic, parent.id, (t) => ({
-            ...t,
-            children,
-          })),
-        };
+        return addChildInSheet(sheet, parent.id, newTopic, idx);
       }
 
-      const parent = findTopicInSheet(sheet, this.parentId);
-      if (!parent) return sheet;
-
-      const idx = this.index ?? parent.children.length;
-      const children = [...parent.children];
-      children.splice(idx, 0, newTopic);
-
-      return {
-        ...sheet,
-        rootTopic: updateTopicInTree(sheet.rootTopic, this.parentId, (t) => ({
-          ...t,
-          children,
-        })),
-      };
+      if (!findTopicInSheet(sheet, this.parentId)) return sheet;
+      return addChildInSheet(sheet, this.parentId, newTopic, this.index);
     });
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     if (!this.addedTopicId) return state;
     const topicId = this.addedTopicId;
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: removeTopicById(sheet.rootTopic, topicId),
-    }));
+    return updateSheetInDocument(state, this.sheetId, (sheet) => removeTopicInSheet(sheet, topicId));
   }
 }
 
-function removeTopicById(
-  root: import('../model/types.js').Topic,
-  id: string,
-): import('../model/types.js').Topic {
+function addChildInSheet(
+  sheet: import('../model/types.js').Sheet,
+  parentId: string,
+  child: Topic,
+  index?: number,
+): import('../model/types.js').Sheet {
+  return updateTopicInSheet(sheet, parentId, (t) => {
+    const children = [...t.children];
+    children.splice(index ?? children.length, 0, child);
+    return { ...t, children };
+  });
+}
+
+function removeTopicInSheet(
+  sheet: import('../model/types.js').Sheet,
+  topicId: string,
+): import('../model/types.js').Sheet {
+  if (findTopicById(sheet.rootTopic, topicId)) {
+    return { ...sheet, rootTopic: removeTopicById(sheet.rootTopic, topicId) };
+  }
+  return {
+    ...sheet,
+    floatingTopics: sheet.floatingTopics.map((f) => removeTopicById(f, topicId)),
+  };
+}
+
+function removeTopicById(root: Topic, id: string): Topic {
   return {
     ...root,
     children: root.children
@@ -83,7 +89,7 @@ function removeTopicById(
 
 export class DeleteTopicCommand implements Command {
   readonly name = 'DeleteTopic';
-  private snapshot: import('../model/types.js').Topic | null = null;
+  private snapshot: Topic | null = null;
   private parentId: string | null = null;
   private index = 0;
 
@@ -97,8 +103,12 @@ export class DeleteTopicCommand implements Command {
       if (sheet.rootTopic.id === this.topicId) {
         throw new Error('Cannot delete root topic');
       }
+      if (isFloatingTopicRoot(sheet, this.topicId)) {
+        // Floating roots are removed via DeleteFloatingTopicCommand / DeleteSummaryCommand.
+        return sheet;
+      }
 
-      const parent = findParentOfTopic(sheet.rootTopic, this.topicId);
+      const parent = findParentInSheet(sheet, this.topicId);
       if (!parent) return sheet;
 
       const topic = findTopicInSheet(sheet, this.topicId);
@@ -108,27 +118,24 @@ export class DeleteTopicCommand implements Command {
       this.parentId = parent.id;
       this.index = parent.children.findIndex((c) => c.id === this.topicId);
 
-      return {
-        ...sheet,
-        rootTopic: updateTopicInTree(sheet.rootTopic, parent.id, (t) => ({
-          ...t,
-          children: t.children.filter((c) => c.id !== this.topicId),
-        })),
-      };
+      return updateTopicInSheet(sheet, parent.id, (t) => ({
+        ...t,
+        children: t.children.filter((c) => c.id !== this.topicId),
+      }));
     });
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     if (!this.snapshot || this.parentId === null) return state;
-
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.parentId!, (t) => {
+    const snapshot = this.snapshot;
+    const index = this.index;
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.parentId!, (t) => {
         const children = [...t.children];
-        children.splice(this.index, 0, this.snapshot!);
+        children.splice(index, 0, snapshot);
         return { ...t, children };
       }),
-    }));
+    );
   }
 }
 
@@ -151,23 +158,19 @@ export class UpdateTopicTitleCommand implements Command {
       const topic = sheet ? findTopicInSheet(sheet, this.topicId) : null;
       this.resolvedOldTitle = topic?.title ?? '';
     }
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => {
         const synced = syncTitleFromRuns(plainToRuns(this.newTitle));
         return touchTopic({ ...t, title: synced.title, titleRich: synced.titleRich }, synced.title);
       }),
-    }));
+    );
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     const title = this.resolvedOldTitle ?? '';
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) =>
-        touchTopic({ ...t, title }, title),
-      ),
-    }));
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => touchTopic({ ...t, title }, title)),
+    );
   }
 
   canMerge(other: Command): boolean {
@@ -199,23 +202,19 @@ export class ToggleCollapseCommand implements Command {
   ) {}
 
   execute(state: MindMapDocument): MindMapDocument {
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => {
         this.previousCollapsed = t.collapsed;
         return { ...t, collapsed: !t.collapsed };
       }),
-    }));
+    );
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     if (this.previousCollapsed === null) return state;
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
-        ...t,
-        collapsed: this.previousCollapsed!,
-      })),
-    }));
+    const collapsed = this.previousCollapsed;
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => ({ ...t, collapsed })),
+    );
   }
 }

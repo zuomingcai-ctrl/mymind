@@ -226,6 +226,7 @@ export class UpdateBoundaryPaddingCommand implements Command {
 export class UpdateRelationshipControlPointsCommand implements Command {
   readonly name = 'UpdateRelationshipControlPoints';
   private oldPoints: import('../model/types.js').Point[] | undefined;
+  private captured = false;
 
   constructor(
     private readonly sheetId: string,
@@ -238,7 +239,10 @@ export class UpdateRelationshipControlPointsCommand implements Command {
       ...sheet,
       relationships: sheet.relationships.map((r) => {
         if (r.id !== this.relationshipId) return r;
-        this.oldPoints = r.controlPoints ? [...r.controlPoints] : undefined;
+        if (!this.captured) {
+          this.oldPoints = r.controlPoints ? r.controlPoints.map((p) => ({ ...p })) : undefined;
+          this.captured = true;
+        }
         return { ...r, controlPoints: this.controlPoints };
       }),
     }));
@@ -249,6 +253,110 @@ export class UpdateRelationshipControlPointsCommand implements Command {
       ...sheet,
       relationships: sheet.relationships.map((r) =>
         r.id === this.relationshipId ? { ...r, controlPoints: this.oldPoints } : r,
+      ),
+    }));
+  }
+
+  canMerge(other: Command): boolean {
+    return (
+      other instanceof UpdateRelationshipControlPointsCommand &&
+      other.sheetId === this.sheetId &&
+      other.relationshipId === this.relationshipId
+    );
+  }
+
+  merge(other: Command): Command {
+    const o = other as UpdateRelationshipControlPointsCommand;
+    const merged = new UpdateRelationshipControlPointsCommand(
+      this.sheetId,
+      this.relationshipId,
+      o.controlPoints,
+    );
+    merged.oldPoints = this.oldPoints;
+    merged.captured = true;
+    return merged;
+  }
+}
+
+export class UpdateRelationshipTitleCommand implements Command {
+  readonly name = 'UpdateRelationshipTitle';
+  private oldTitle: string | undefined;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly relationshipId: string,
+    private readonly title: string,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      relationships: sheet.relationships.map((r) => {
+        if (r.id !== this.relationshipId) return r;
+        this.oldTitle = r.title;
+        return { ...r, title: this.title };
+      }),
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      relationships: sheet.relationships.map((r) =>
+        r.id === this.relationshipId ? { ...r, title: this.oldTitle } : r,
+      ),
+    }));
+  }
+
+  canMerge(other: Command): boolean {
+    return (
+      other instanceof UpdateRelationshipTitleCommand &&
+      other.sheetId === this.sheetId &&
+      other.relationshipId === this.relationshipId
+    );
+  }
+
+  merge(other: Command): Command {
+    const o = other as UpdateRelationshipTitleCommand;
+    const merged = new UpdateRelationshipTitleCommand(this.sheetId, this.relationshipId, o.title);
+    merged.oldTitle = this.oldTitle;
+    return merged;
+  }
+}
+
+export class UpdateRelationshipStyleCommand implements Command {
+  readonly name = 'UpdateRelationshipStyle';
+  private oldStyle: import('../model/types.js').EdgeStyle | undefined;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly relationshipId: string,
+    private readonly patch: Partial<import('../model/types.js').EdgeStyle>,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      relationships: sheet.relationships.map((r) => {
+        if (r.id !== this.relationshipId) return r;
+        this.oldStyle = r.style ? { ...r.style } : undefined;
+        const base: import('../model/types.js').EdgeStyle = r.style ?? {
+          lineType: 'curve',
+          color: '#666',
+          width: 2,
+          arrowStart: false,
+          arrowEnd: true,
+        };
+        return { ...r, style: { ...base, ...this.patch } };
+      }),
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      relationships: sheet.relationships.map((r) =>
+        r.id === this.relationshipId ? { ...r, style: this.oldStyle } : r,
       ),
     }));
   }

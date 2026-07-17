@@ -150,6 +150,80 @@ export class AddCommentCommand implements Command {
   }
 }
 
+export class DeleteCommentCommand implements Command {
+  readonly name = 'DeleteComment';
+  private snapshot: TopicComment | null = null;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly topicId: string,
+    private readonly commentId: string,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+        const c = (t.comments ?? []).find((x) => x.id === this.commentId);
+        this.snapshot = c ? { ...c } : null;
+        return { ...t, comments: (t.comments ?? []).filter((x) => x.id !== this.commentId) };
+      }),
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    if (!this.snapshot) return state;
+    const snap = this.snapshot;
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+        ...t,
+        comments: [...(t.comments ?? []), snap],
+      })),
+    }));
+  }
+}
+
+export class UpdateCommentCommand implements Command {
+  readonly name = 'UpdateComment';
+  private oldText: string | null = null;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly topicId: string,
+    private readonly commentId: string,
+    private readonly text: string,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+        ...t,
+        comments: (t.comments ?? []).map((c) => {
+          if (c.id !== this.commentId) return c;
+          this.oldText = c.text;
+          return { ...c, text: this.text };
+        }),
+      })),
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    if (this.oldText === null) return state;
+    const text = this.oldText;
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+        ...t,
+        comments: (t.comments ?? []).map((c) =>
+          c.id === this.commentId ? { ...c, text } : c,
+        ),
+      })),
+    }));
+  }
+}
+
 export class UpdateTaskCommand implements Command {
   readonly name = 'UpdateTask';
   private oldTask: TaskInfo | undefined;

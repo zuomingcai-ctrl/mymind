@@ -15,9 +15,12 @@
     "test": "vitest run --config ../../vitest.config.ts"
   },
   "dependencies": {
-    "nanoid": "^5.0.9"
+    "jszip": "^3.10.1",
+    "nanoid": "^5.0.9",
+    "pptxgenjs": "^4.0.1"
   },
   "devDependencies": {
+    "@types/jszip": "^3.4.1",
     "typescript": "^5.7.0"
   }
 }

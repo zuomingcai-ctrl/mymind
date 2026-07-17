@@ -121,12 +121,12 @@ defineExpose({ focus: () => focusInput(true), replaceWith });
   z-index: 300;
   box-sizing: border-box;
   padding: 4px 8px;
-  border: 2px solid #4a90d9;
-  border-radius: 6px;
+  border: 2px solid var(--el-color-primary);
+  border-radius: var(--el-border-radius-base);
   font-size: 14px;
-  font-family: system-ui, sans-serif;
-  background: #fff;
+  font-family: var(--el-font-family);
+  background: var(--el-bg-color);
   outline: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--el-box-shadow-light);
 }
 </style>

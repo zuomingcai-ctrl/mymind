@@ -8,6 +8,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{ close: [] }>();
 
+const visible = ref(true);
 const paper = ref<'a4' | 'letter'>('a4');
 const sheetScope = ref<'current' | 'all'>('current');
 
@@ -16,93 +17,64 @@ const pageCount = computed(() => {
   return sheetScope.value === 'all' ? props.document.sheets.length : 1;
 });
 
+const dialogVisible = computed({
+  get: () => visible.value,
+  set: (v: boolean) => {
+    visible.value = v;
+    if (!v) emit('close');
+  },
+});
+
 function onPrint() {
   window.print();
 }
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('close')">
-    <div class="dialog">
-      <h2>打印预览</h2>
-      <div class="options">
-        <label>
-          纸张
-          <select v-model="paper">
-            <option value="a4">A4</option>
-            <option value="letter">Letter</option>
-          </select>
-        </label>
-        <label>
-          范围
-          <select v-model="sheetScope">
-            <option value="current">当前画布</option>
-            <option value="all">全部画布</option>
-          </select>
-        </label>
-      </div>
-      <div class="preview">
-        <div v-for="n in pageCount" :key="n" class="page">{{ paper.toUpperCase() }} — 第 {{ n }} 页</div>
-      </div>
-      <div class="actions">
-        <button @click="emit('close')">关闭</button>
-        <button class="primary" @click="onPrint">打印</button>
-      </div>
-    </div>
-  </div>
+  <el-dialog
+    v-model="dialogVisible"
+    title="打印预览"
+    width="560px"
+    destroy-on-close
+    append-to-body
+  >
+    <el-form label-position="top" inline>
+      <el-form-item label="纸张">
+        <el-select v-model="paper" style="width: 140px">
+          <el-option label="A4" value="a4" />
+          <el-option label="Letter" value="letter" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="范围">
+        <el-select v-model="sheetScope" style="width: 160px">
+          <el-option label="当前画布" value="current" />
+          <el-option label="全部画布" value="all" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+
+    <el-scrollbar max-height="280px">
+      <el-card
+        v-for="n in pageCount"
+        :key="n"
+        class="page"
+        shadow="never"
+      >
+        {{ paper.toUpperCase() }} — 第 {{ n }} 页
+      </el-card>
+    </el-scrollbar>
+
+    <template #footer>
+      <el-button @click="emit('close')">关闭</el-button>
+      <el-button type="primary" @click="onPrint">打印</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  z-index: 300;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-.dialog {
-  background: #fff;
-  padding: 20px;
-  border-radius: 8px;
-  width: 520px;
-}
-.options {
-  display: flex;
-  gap: 16px;
-  margin: 12px 0;
-}
-.options label {
-  display: flex;
-  flex-direction: column;
-  font-size: 12px;
-  gap: 4px;
-}
-.preview {
-  border: 1px solid #ddd;
-  min-height: 200px;
-  padding: 12px;
-  background: #f5f5f5;
-}
 .page {
-  background: #fff;
-  border: 1px solid #ccc;
-  padding: 24px;
   margin-bottom: 8px;
-  min-height: 120px;
-}
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
-}
-.primary {
-  background: #4a90d9;
-  color: #fff;
-  border: none;
-  padding: 6px 16px;
-  border-radius: 4px;
+  min-height: 100px;
+  background: var(--el-fill-color-blank);
 }
 </style>

@@ -10,6 +10,7 @@ export default defineConfig({
         manualChunks: {
           core: ['@mymind/core'],
           vendor: ['vue', 'pinia', 'vue-i18n'],
+          'element-plus': ['element-plus', '@element-plus/icons-vue'],
         },
       },
     },

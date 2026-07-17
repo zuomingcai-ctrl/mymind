@@ -116,6 +116,28 @@ export function findParentOfTopic(root: Topic, id: string): Topic | null {
   return null;
 }
 
+/** Parent of a topic in the main tree or any floating/summary topic tree. */
+export function findParentInSheet(sheet: Sheet, id: string): Topic | null {
+  const inTree = findParentOfTopic(sheet.rootTopic, id);
+  if (inTree) return inTree;
+  for (const floating of sheet.floatingTopics) {
+    if (floating.id === id) return null;
+    const found = findParentOfTopic(floating, id);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** True if id is the root of a floating topic tree (e.g. summary topic). */
+export function isFloatingTopicRoot(sheet: Sheet, id: string): boolean {
+  return sheet.floatingTopics.some((t) => t.id === id);
+}
+
+/** True if id lives under any floating topic tree (including the floating root). */
+export function isInFloatingTopicTree(sheet: Sheet, id: string): boolean {
+  return sheet.floatingTopics.some((t) => !!findTopicById(t, id));
+}
+
 export function cloneTopic(topic: Topic): Topic {
   return JSON.parse(JSON.stringify(topic)) as Topic;
 }
@@ -173,4 +195,25 @@ export function updateTopicInTree(
     ...root,
     children: root.children.map((c) => updateTopicInTree(c, topicId, updater)),
   };
+}
+
+/** Update a topic in the tree or among floating/summary topics. */
+export function updateTopicInSheet(
+  sheet: Sheet,
+  topicId: string,
+  updater: (topic: Topic) => Topic,
+): Sheet {
+  if (findTopicById(sheet.rootTopic, topicId)) {
+    return {
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, topicId, updater),
+    };
+  }
+  let changed = false;
+  const floatingTopics = sheet.floatingTopics.map((f) => {
+    if (!findTopicById(f, topicId)) return f;
+    changed = true;
+    return updateTopicInTree(f, topicId, updater);
+  });
+  return changed ? { ...sheet, floatingTopics } : sheet;
 }

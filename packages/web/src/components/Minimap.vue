@@ -46,8 +46,7 @@ function draw() {
     ctx.fillRect(ox + node.x * scale, oy + node.y * scale, Math.max(2, node.width * scale), Math.max(2, node.height * scale));
   }
 
-  // viewport rect
-  ctx.strokeStyle = '#4a90d9';
+  ctx.strokeStyle = '#409eff';
   ctx.lineWidth = 1;
   ctx.strokeRect(
     ox + props.viewport.x * scale,
@@ -77,19 +76,32 @@ onMounted(draw);
 </script>
 
 <template>
-  <canvas ref="canvasRef" class="minimap" width="140" height="100" title="小地图" @click="onClick" />
+  <el-card class="minimap-card" shadow="hover" :body-style="{ padding: '4px' }">
+    <template #header>
+      <span class="minimap-title">小地图</span>
+    </template>
+    <canvas ref="canvasRef" class="minimap" width="140" height="100" @click="onClick" />
+  </el-card>
 </template>
 
 <style scoped>
-.minimap {
+.minimap-card {
   position: absolute;
   right: 12px;
   bottom: 40px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-  cursor: pointer;
   z-index: 5;
+  width: auto;
+}
+.minimap-card :deep(.el-card__header) {
+  padding: 4px 8px;
+}
+.minimap-title {
+  font-size: 11px;
+  color: var(--el-text-color-secondary);
+}
+.minimap {
+  display: block;
+  cursor: pointer;
+  border-radius: 2px;
 }
 </style>

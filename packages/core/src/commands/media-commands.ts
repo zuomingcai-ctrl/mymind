@@ -1,4 +1,4 @@
-import type { MindMapDocument, InlineRun, ImageAttachment, Hyperlink, FileAttachment } from '../model/types.js';
+import type { MindMapDocument, InlineRun, ImageAttachment, Hyperlink, FileAttachment, AudioAttachment } from '../model/types.js';
 import {
   touchTopic,
   generateId,
@@ -136,6 +136,37 @@ export class AddAttachmentCommand implements Command {
       rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
         ...t,
         attachments: t.attachments.filter((a) => a.id !== id),
+      })),
+    }));
+  }
+}
+
+export class UpdateAudioCommand implements Command {
+  readonly name = 'UpdateAudio';
+  private oldAudio: AudioAttachment | undefined;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly topicId: string,
+    private readonly audio: AudioAttachment | undefined,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+        this.oldAudio = t.audio ? { ...t.audio } : undefined;
+        return { ...t, audio: this.audio };
+      }),
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+        ...t,
+        audio: this.oldAudio,
       })),
     }));
   }

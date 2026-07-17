@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { mount } from '@vue/test-utils';
 import { createI18n } from 'vue-i18n';
+import ElementPlus from 'element-plus';
 import StatusBar from '../components/StatusBar.vue';
 import zhCN from '../i18n/locales/zh-CN.json';
 
@@ -21,7 +22,7 @@ describe('StatusBar', () => {
   it('shows zoom percent', () => {
     const wrapper = mount(StatusBar, {
       props: { zoomPercent: 100 },
-      global: { plugins: [i18n] },
+      global: { plugins: [i18n, ElementPlus] },
     });
     expect(wrapper.text()).toContain('100%');
   });

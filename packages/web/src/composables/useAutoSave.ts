@@ -11,7 +11,10 @@ export function useAutoSave(intervalMs = 30000) {
     timer = setInterval(async () => {
       if (!enabled.value) return;
       const store = useDocumentStore();
-      if (store.document) await saveDocument(store.document);
+      if (store.document && store.isDirty) {
+        await saveDocument(store.document);
+        store.markClean();
+      }
     }, intervalMs);
   }
 

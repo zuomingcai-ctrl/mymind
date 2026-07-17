@@ -141,6 +141,17 @@ export interface FileAttachment {
   path?: string;
 }
 
+/** EL-021: audio note attached to a topic */
+export interface AudioAttachment {
+  id: string;
+  name: string;
+  mimeType: string;
+  durationMs?: number;
+  /** data URL or blob ref */
+  data?: string;
+  blobRef?: string;
+}
+
 export interface Topic {
   id: string;
   title: string;
@@ -154,6 +165,7 @@ export interface Topic {
   image?: ImageAttachment;
   hyperlink?: Hyperlink;
   attachments: FileAttachment[];
+  audio?: AudioAttachment;
   task?: TaskInfo;
   quadrantIndex?: number;
   date?: string;
@@ -188,10 +200,16 @@ export interface EdgeStyle {
   arrowEnd: boolean;
 }
 
+/** Endpoint kind for relationships (ZN-008); default topic when omitted */
+export type RelEndpointKind = 'topic' | 'zone' | 'boundary';
+
 export interface Relationship {
   id: string;
+  /** Endpoint id (topic / zone / boundary depending on fromKind) */
   fromTopicId: string;
   toTopicId: string;
+  fromKind?: RelEndpointKind;
+  toKind?: RelEndpointKind;
   title?: string;
   controlPoints?: Point[];
   style?: EdgeStyle;
@@ -219,6 +237,8 @@ export interface ZoneStyle {
   borderColor: string;
   borderWidth: number;
   opacity: number;
+  /** Optional border dash pattern */
+  borderDash?: number[];
 }
 
 export interface Zone {

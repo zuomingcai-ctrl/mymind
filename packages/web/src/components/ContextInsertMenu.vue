@@ -46,96 +46,79 @@ function enabled(id: InsertActionId): boolean {
   return isInsertEnabled(id, enableCtx.value);
 }
 
-function onPick(id: InsertActionId) {
-  if (!enabled(id)) return;
-  emit('insert', id);
+function onPick(id: string) {
+  const actionId = id as InsertActionId;
+  if (!enabled(actionId)) return;
+  emit('insert', actionId);
   emit('close');
 }
 
-function onDocClick() {
-  if (props.visible) emit('close');
+function onDocClick(e: MouseEvent) {
+  if (!props.visible) return;
+  const t = e.target as HTMLElement | null;
+  if (t?.closest?.('[data-testid="context-insert-menu"]')) return;
+  emit('close');
 }
 
-onMounted(() => {
-  document.addEventListener('mousedown', onDocClick);
-});
-onUnmounted(() => {
-  document.removeEventListener('mousedown', onDocClick);
-});
+onMounted(() => document.addEventListener('mousedown', onDocClick));
+onUnmounted(() => document.removeEventListener('mousedown', onDocClick));
 </script>
 
 <template>
-  <div
+  <el-card
     v-if="visible"
     class="ctx-menu"
     data-testid="context-insert-menu"
+    shadow="always"
+    :body-style="{ padding: '4px 0' }"
     :style="{ left: `${x}px`, top: `${y}px` }"
     @mousedown.stop
   >
-    <div class="ctx-title">插入</div>
-    <button
-      v-for="id in primaryItems"
-      :key="id"
-      type="button"
-      class="ctx-item"
-      :disabled="!enabled(id)"
-      @click="onPick(id)"
-    >
-      {{ insertItemLabel(id) }}
-    </button>
-    <div class="ctx-sep" />
-    <div class="ctx-title">链接</div>
-    <button
-      v-for="id in LINK_SUBMENU"
-      :key="id"
-      type="button"
-      class="ctx-item"
-      :disabled="!enabled(id)"
-      @click="onPick(id)"
-    >
-      {{ insertItemLabel(id) }}
-    </button>
-  </div>
+    <el-menu class="ctx-el-menu" @select="onPick">
+      <el-menu-item-group title="插入">
+        <el-menu-item
+          v-for="id in primaryItems"
+          :key="id"
+          :index="id"
+          :disabled="!enabled(id)"
+        >
+          {{ insertItemLabel(id) }}
+        </el-menu-item>
+      </el-menu-item-group>
+      <el-divider style="margin: 4px 0" />
+      <el-menu-item-group title="链接">
+        <el-menu-item
+          v-for="id in LINK_SUBMENU"
+          :key="id"
+          :index="id"
+          :disabled="!enabled(id)"
+        >
+          {{ insertItemLabel(id) }}
+        </el-menu-item>
+      </el-menu-item-group>
+    </el-menu>
+  </el-card>
 </template>
 
 <style scoped>
 .ctx-menu {
   position: fixed;
   z-index: 50;
-  min-width: 160px;
+  min-width: 168px;
   max-height: 70vh;
   overflow-y: auto;
-  background: #fff;
-  border: 1px solid #ccc;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
-  padding: 4px 0;
-  border-radius: 4px;
-}
-.ctx-title {
-  padding: 4px 12px;
-  font-size: 11px;
-  color: #888;
-}
-.ctx-item {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 6px 12px;
   border: none;
-  background: transparent;
-  cursor: pointer;
+}
+.ctx-el-menu {
+  border-right: none;
+}
+.ctx-el-menu :deep(.el-menu-item) {
+  height: 32px;
+  line-height: 32px;
   font-size: 13px;
 }
-.ctx-item:hover:not(:disabled) {
-  background: #f0f4f8;
-}
-.ctx-item:disabled {
-  color: #bbb;
-  cursor: not-allowed;
-}
-.ctx-sep {
-  height: 1px;
-  background: #eee;
-  margin: 4px 0;
+.ctx-el-menu :deep(.el-menu-item-group__title) {
+  padding: 4px 16px;
+  font-size: 11px;
 }
 </style>

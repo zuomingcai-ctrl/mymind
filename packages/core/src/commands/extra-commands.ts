@@ -7,10 +7,11 @@ import type {
 } from '../model/types.js';
 import {
   createTopic,
-  findParentOfTopic,
+  findParentInSheet,
   findTopicInSheet,
   generateId,
   updateSheetInDocument,
+  updateTopicInSheet,
   updateTopicInTree,
 } from '../model/factory.js';
 import type { Command } from './types.js';
@@ -29,7 +30,8 @@ export class InsertParentTopicCommand implements Command {
   execute(state: MindMapDocument): MindMapDocument {
     return updateSheetInDocument(state, this.sheetId, (sheet) => {
       if (sheet.rootTopic.id === this.topicId) return sheet;
-      const parent = findParentOfTopic(sheet.rootTopic, this.topicId);
+      if (sheet.floatingTopics.some((t) => t.id === this.topicId)) return sheet;
+      const parent = findParentInSheet(sheet, this.topicId);
       if (!parent) return sheet;
       const idx = parent.children.findIndex((c) => c.id === this.topicId);
       if (idx < 0) return sheet;
@@ -39,13 +41,7 @@ export class InsertParentTopicCommand implements Command {
       this.addedTopicId = newParent.id;
       const children = [...parent.children];
       children.splice(idx, 1, newParent);
-      return {
-        ...sheet,
-        rootTopic: updateTopicInTree(sheet.rootTopic, parent.id, (t) => ({
-          ...t,
-          children,
-        })),
-      };
+      return updateTopicInSheet(sheet, parent.id, (t) => ({ ...t, children }));
     });
   }
 
@@ -56,18 +52,12 @@ export class InsertParentTopicCommand implements Command {
       const parent = findTopicInSheet(sheet, parentId);
       if (!parent || parent.children.length !== 1) return sheet;
       const child = parent.children[0]!;
-      const grand = findParentOfTopic(sheet.rootTopic, parentId);
+      const grand = findParentInSheet(sheet, parentId);
       if (!grand) return sheet;
       const idx = grand.children.findIndex((c) => c.id === parentId);
       const children = [...grand.children];
       children.splice(idx, 1, child);
-      return {
-        ...sheet,
-        rootTopic: updateTopicInTree(sheet.rootTopic, grand.id, (t) => ({
-          ...t,
-          children,
-        })),
-      };
+      return updateTopicInSheet(sheet, grand.id, (t) => ({ ...t, children }));
     });
   }
 }
@@ -265,6 +255,41 @@ export class ReorderPitchSlidesCommand implements Command {
     return updateSheetInDocument(state, this.sheetId, (sheet) => ({
       ...sheet,
       pitchSettings: { slides: prev },
+    }));
+  }
+}
+
+export class UpdatePitchSlideStyleCommand implements Command {
+  readonly name = 'UpdatePitchSlideStyle';
+  private previous: PitchSlide | null = null;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly slideId: string,
+    private readonly patch: { backgroundColor?: string; transition?: PitchSlide['transition'] },
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      pitchSettings: {
+        slides: sheet.pitchSettings.slides.map((s) => {
+          if (s.id !== this.slideId) return s;
+          this.previous = { ...s };
+          return { ...s, ...this.patch };
+        }),
+      },
+    }));
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    if (!this.previous) return state;
+    const prev = this.previous;
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      pitchSettings: {
+        slides: sheet.pitchSettings.slides.map((s) => (s.id === this.slideId ? prev : s)),
+      },
     }));
   }
 }

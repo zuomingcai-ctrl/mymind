@@ -239,6 +239,18 @@ export function exportTextBundle(doc: MindMapDocument): { infoJson: string; text
   };
 }
 
+/** Package as a .textbundle zip (info.json + text.md). */
+export async function exportTextBundleZip(doc: MindMapDocument): Promise<Uint8Array> {
+  const JSZip = (await import('jszip')).default;
+  const { infoJson, textMd } = exportTextBundle(doc);
+  const zip = new JSZip();
+  const folder = zip.folder(`${doc.title || 'document'}.textbundle`);
+  folder?.file('info.json', infoJson);
+  folder?.file('text.md', textMd);
+  const buf = await zip.generateAsync({ type: 'uint8array' });
+  return buf;
+}
+
 function findTitle(root: Topic, id: string): string | null {
   if (root.id === id) return root.title;
   for (const c of root.children) {

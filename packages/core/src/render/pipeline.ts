@@ -11,9 +11,11 @@ export function buildFrame(
   for (const t of visibleTopics) {
     topicMap.set(t.id, t);
   }
-  // Summary / free topics live outside the tree but still render.
-  for (const t of sheet.floatingTopics) {
-    topicMap.set(t.id, t);
+  // Summary / free topics live outside the tree but still render (incl. descendants).
+  for (const floating of sheet.floatingTopics) {
+    for (const t of collectVisibleTopics(floating)) {
+      topicMap.set(t.id, t);
+    }
   }
 
   const visibleNodes = [...layout.nodes.values()].filter(

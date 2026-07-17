@@ -87,8 +87,11 @@ export function layoutMindmap(
   let leftChildren: Topic[];
   let rightChildren: Topic[];
   if (balanced) {
-    leftChildren = children.filter((_, i) => i % 2 === 0);
-    rightChildren = children.filter((_, i) => i % 2 === 1);
+    // Half/half keeps same-side siblings consecutive in the children array,
+    // so summary ranges (SM-001) can cover visually adjacent branches.
+    const mid = Math.ceil(children.length / 2);
+    rightChildren = children.slice(0, mid);
+    leftChildren = children.slice(mid);
   } else if (direction === 'left') {
     leftChildren = children;
     rightChildren = [];

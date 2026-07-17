@@ -29,6 +29,7 @@ export {
   AddMarkerCommand,
   MoveTopicCommand,
   AddFloatingTopicCommand,
+  DeleteFloatingTopicCommand,
   PasteTopicsCommand,
   remapTopics,
   type ClipboardPayload,
@@ -38,13 +39,24 @@ export {
   UpdateImageCommand,
   UpdateHyperlinkCommand,
   AddAttachmentCommand,
+  UpdateAudioCommand,
 } from './media-commands.js';
-export { AddZoneCommand, ToggleTodoCommand, AddTodoCommand, todoCompletionRate } from './zone-todo-commands.js';
+export {
+  AddZoneCommand,
+  ToggleTodoCommand,
+  AddTodoCommand,
+  DeleteTodoCommand,
+  ReorderTodosCommand,
+  UpdateZoneStyleCommand,
+  todoCompletionRate,
+} from './zone-todo-commands.js';
 export {
   AddCalloutCommand,
   UpdateCalloutCommand,
   DeleteCalloutCommand,
   AddCommentCommand,
+  DeleteCommentCommand,
+  UpdateCommentCommand,
   UpdateTaskCommand,
 } from './callout-comment-commands.js';
 export { FormatPainterCommand, SaveAsDocumentCommand } from './format-painter.js';
@@ -57,6 +69,8 @@ export {
   UpdateSummaryRangeCommand,
   UpdateBoundaryPaddingCommand,
   UpdateRelationshipControlPointsCommand,
+  UpdateRelationshipTitleCommand,
+  UpdateRelationshipStyleCommand,
 } from './phase4-commands.js';
 export {
   InsertParentTopicCommand,
@@ -65,6 +79,7 @@ export {
   AddPitchSlideCommand,
   DeletePitchSlideCommand,
   ReorderPitchSlidesCommand,
+  UpdatePitchSlideStyleCommand,
   DeleteMarkerCommand,
   ReplaceTextCommand,
   DeleteLabelCommand,

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { Sheet } from '@mymind/core';
 import {
   STRUCTURE_SECTIONS,
@@ -18,17 +18,9 @@ const emit = defineEmits<{
   select: [variantId: string];
 }>();
 
-const expanded = ref<Record<string, boolean>>({});
-
-function isExpanded(type: string): boolean {
-  if (expanded.value[type] !== undefined) return expanded.value[type]!;
-  if (props.sheet) return props.sheet.structure === type;
-  return type === 'mindmap';
-}
-
-function toggleSection(type: string) {
-  expanded.value[type] = !isExpanded(type);
-}
+const activeNames = ref<string[]>(
+  props.sheet ? [props.sheet.structure] : ['mindmap'],
+);
 
 const activeVariantId = computed(() => {
   if (props.selectedVariantId) return props.selectedVariantId;
@@ -36,23 +28,33 @@ const activeVariantId = computed(() => {
   return 'mindmap-balanced-classic';
 });
 
+watch(
+  () => props.sheet?.structure,
+  (s) => {
+    if (s && !activeNames.value.includes(s)) {
+      activeNames.value = [...activeNames.value, s];
+    }
+  },
+);
+
 function onSelect(variantId: string) {
   emit('select', variantId);
 }
 </script>
 
 <template>
-  <div class="variant-picker" :class="{ compact }">
-    <section v-for="section in STRUCTURE_SECTIONS" :key="section.type" class="section">
-      <button type="button" class="section-header" @click="toggleSection(section.type)">
-        <span class="caret" :class="{ collapsed: !isExpanded(section.type) }">▼</span>
-        <span class="section-title">{{ section.label }}</span>
-      </button>
-      <div v-show="isExpanded(section.type)" class="grid">
-        <button
+  <el-collapse v-model="activeNames" class="variant-picker" :class="{ compact }">
+    <el-collapse-item
+      v-for="section in STRUCTURE_SECTIONS"
+      :key="section.type"
+      :title="section.label"
+      :name="section.type"
+    >
+      <div class="grid">
+        <el-button
           v-for="variant in getVariantsForStructure(section.type)"
           :key="variant.id"
-          type="button"
+          text
           class="grid-item"
           :aria-pressed="activeVariantId === variant.id"
           @click="onSelect(variant.id)"
@@ -62,49 +64,20 @@ function onSelect(variantId: string) {
             :selected="activeVariantId === variant.id"
             :pro="variant.pro"
           />
-        </button>
+        </el-button>
       </div>
-    </section>
-  </div>
+    </el-collapse-item>
+  </el-collapse>
 </template>
 
 <style scoped>
-.variant-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
 .variant-picker.compact {
   max-height: 360px;
   overflow-y: auto;
 }
-.section {
-  margin-bottom: 8px;
-}
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 10px 0 8px;
-  border: none;
-  background: none;
-  cursor: pointer;
-  text-align: left;
-}
-.section-title {
-  font-size: 15px;
+.variant-picker :deep(.el-collapse-item__header) {
   font-weight: 700;
-  color: #111;
-}
-.caret {
-  font-size: 10px;
-  color: #111;
-  transition: transform 0.15s;
-  display: inline-block;
-}
-.caret.collapsed {
-  transform: rotate(-90deg);
+  font-size: 14px;
 }
 .grid {
   display: grid;
@@ -112,14 +85,14 @@ function onSelect(variantId: string) {
   gap: 10px;
 }
 .grid-item {
-  padding: 0;
-  border: none;
-  background: none;
-  cursor: pointer;
+  padding: 0 !important;
+  height: auto !important;
+  border: none !important;
   min-width: 0;
+  width: 100%;
 }
 .grid-item:focus-visible :deep(.thumb) {
-  outline: 2px solid #4a90d9;
+  outline: 2px solid var(--el-color-primary);
   outline-offset: 2px;
 }
 </style>

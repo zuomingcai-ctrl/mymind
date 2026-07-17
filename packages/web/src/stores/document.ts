@@ -11,6 +11,7 @@ export const useDocumentStore = defineStore('document', {
     activeSheetId: '' as string,
     selection: [] as string[],
     commandBus: null as CommandBus | null,
+    isDirty: false,
   }),
 
   getters: {
@@ -25,16 +26,36 @@ export const useDocumentStore = defineStore('document', {
   actions: {
     newDocument(variantId = 'mindmap-balanced-classic') {
       const doc = createDocumentWithVariant(variantId);
+      this.loadDocument(doc);
+    },
+
+    /** Replace the current document (single-document mode). */
+    loadDocument(doc: MindMapDocument) {
+      const sheet = doc.sheets[0]!;
       this.document = doc;
-      this.activeSheetId = doc.sheets[0]!.id;
-      this.selection = [doc.sheets[0]!.rootTopic.id];
+      this.activeSheetId = sheet.id;
+      this.selection = [sheet.rootTopic.id];
       this.commandBus = new CommandBus(doc);
+      this.isDirty = false;
+    },
+
+    closeDocument() {
+      this.document = null;
+      this.activeSheetId = '';
+      this.selection = [];
+      this.commandBus = null;
+      this.isDirty = false;
     },
 
     syncFromBus() {
       if (this.commandBus) {
         this.document = this.commandBus.getDocument();
+        this.isDirty = true;
       }
+    },
+
+    markClean() {
+      this.isDirty = false;
     },
 
     setSelection(ids: string[]) {

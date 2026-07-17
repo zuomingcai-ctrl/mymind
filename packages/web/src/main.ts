@@ -1,6 +1,9 @@
 import { createApp } from 'vue';
 import { createPinia } from 'pinia';
 import { createI18n } from 'vue-i18n';
+import ElementPlus from 'element-plus';
+import zhCn from 'element-plus/es/locale/lang/zh-cn';
+import 'element-plus/dist/index.css';
 import App from './App.vue';
 import zhCN from './i18n/locales/zh-CN.json';
 import enUS from './i18n/locales/en-US.json';
@@ -15,4 +18,5 @@ const i18n = createI18n({
 const app = createApp(App);
 app.use(createPinia());
 app.use(i18n);
+app.use(ElementPlus, { locale: zhCn, size: 'small' });
 app.mount('#app');

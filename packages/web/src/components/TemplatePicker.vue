@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue';
-import { listTemplates, createFromTemplate, listTemplateCategories, type TemplateCategory } from '@mymind/core';
-import { CommandBus } from '@mymind/core';
+import {
+  listTemplates,
+  createFromTemplate,
+  listTemplateCategories,
+  createFromUserTemplate,
+  type TemplateCategory,
+  type UserTemplate,
+} from '@mymind/core';
 import { useDocumentStore } from '../stores/document';
 
 const emit = defineEmits<{
@@ -9,108 +15,114 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
-const category = ref<TemplateCategory | 'all'>('all');
+const visible = ref(true);
+const category = ref<TemplateCategory | 'all' | 'user'>('all');
 const categories = listTemplateCategories();
 
+const userTemplates = computed((): UserTemplate[] => {
+  try {
+    const raw = localStorage.getItem('mymind-user-templates');
+    if (!raw) return [];
+    return JSON.parse(raw) as UserTemplate[];
+  } catch {
+    return [];
+  }
+});
+
 const templates = computed(() =>
-  category.value === 'all' ? listTemplates() : listTemplates(category.value),
+  category.value === 'all' ? listTemplates() : category.value === 'user' ? [] : listTemplates(category.value),
 );
 
 const store = useDocumentStore();
 
+const dialogVisible = computed({
+  get: () => visible.value,
+  set: (v: boolean) => {
+    visible.value = v;
+    if (!v) emit('cancel');
+  },
+});
+
 function pick(id: string) {
   const doc = createFromTemplate(id);
-  store.document = doc;
-  store.activeSheetId = doc.sheets[0]!.id;
-  store.selection = [doc.sheets[0]!.rootTopic.id];
-  store.commandBus = new CommandBus(doc);
+  store.loadDocument(doc);
   emit('select', id);
+}
+
+function pickUser(tpl: UserTemplate) {
+  store.loadDocument(createFromUserTemplate(tpl));
+  emit('select', tpl.id);
 }
 </script>
 
 <template>
-  <div class="overlay" @click.self="emit('cancel')">
-    <div class="dialog">
-      <h2>{{ $t('templates.title') }}</h2>
-      <div class="filters">
-        <button :class="{ active: category === 'all' }" @click="category = 'all'">All</button>
-        <button
-          v-for="c in categories"
-          :key="c"
-          :class="{ active: category === c }"
-          @click="category = c"
+  <el-dialog
+    v-model="dialogVisible"
+    :title="$t('templates.title')"
+    width="680px"
+    destroy-on-close
+    append-to-body
+  >
+    <el-radio-group v-model="category" class="filters">
+      <el-radio-button value="all">All</el-radio-button>
+      <el-radio-button value="user">{{ $t('templates.user') }}</el-radio-button>
+      <el-radio-button v-for="c in categories" :key="c" :value="c">
+        {{ $t(`templates.${c}`) }}
+      </el-radio-button>
+    </el-radio-group>
+
+    <el-row v-if="category === 'user'" :gutter="12" class="grid">
+      <el-col v-if="!userTemplates.length" :span="24">
+        <el-empty :description="$t('templates.noUser')" />
+      </el-col>
+      <el-col v-for="t in userTemplates" :key="t.id" :xs="24" :sm="12" :md="8">
+        <el-card
+          shadow="hover"
+          class="template-card"
+          :body-style="{ padding: '12px', cursor: 'pointer' }"
+          @click="pickUser(t)"
         >
-          {{ $t(`templates.${c}`) }}
-        </button>
-      </div>
-      <div class="grid">
-        <button v-for="t in templates" :key="t.id" class="card" :data-template-id="t.id" @click="pick(t.id)">
-          <strong>{{ t.name }}</strong>
-          <span>{{ t.description }}</span>
-        </button>
-      </div>
-    </div>
-  </div>
+          <div class="name">{{ t.name }}</div>
+          <div class="desc">{{ t.createdAt.slice(0, 10) }}</div>
+        </el-card>
+      </el-col>
+    </el-row>
+
+    <el-row v-else :gutter="12" class="grid">
+      <el-col v-for="t in templates" :key="t.id" :xs="24" :sm="12" :md="8">
+        <el-card
+          shadow="hover"
+          class="template-card"
+          :body-style="{ padding: '12px', cursor: 'pointer' }"
+          :data-template-id="t.id"
+          @click="pick(t.id)"
+        >
+          <div class="name">{{ t.name }}</div>
+          <div class="desc">{{ t.description }}</div>
+        </el-card>
+      </el-col>
+    </el-row>
+  </el-dialog>
 </template>
 
 <style scoped>
-.overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 200;
-}
-.dialog {
-  background: #fff;
-  border-radius: 8px;
-  padding: 20px;
-  max-width: 640px;
-  width: 90%;
-  max-height: 80vh;
-  overflow-y: auto;
-}
 .filters {
-  display: flex;
-  gap: 8px;
-  margin: 12px 0;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
-.filters button {
-  padding: 4px 10px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  cursor: pointer;
-}
-.filters button.active {
-  background: #4a90d9;
-  color: #fff;
-  border-color: #4a90d9;
-}
 .grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: 10px;
+  max-height: 55vh;
+  overflow-y: auto;
 }
-.card {
-  text-align: left;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 6px;
-  cursor: pointer;
-  background: #fafafa;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.template-card {
+  margin-bottom: 12px;
 }
-.card:hover {
-  border-color: #4a90d9;
+.name {
+  font-weight: 600;
+  margin-bottom: 4px;
 }
-.card span {
+.desc {
   font-size: 12px;
-  color: #666;
+  color: var(--el-text-color-secondary);
 }
 </style>

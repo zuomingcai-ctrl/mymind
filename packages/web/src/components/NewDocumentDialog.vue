@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { getDefaultVariantForStructure } from '@mymind/core';
 import StructureVariantPicker from './structure/StructureVariantPicker.vue';
 
@@ -8,73 +8,43 @@ const emit = defineEmits<{
   cancel: [];
 }>();
 
+const visible = ref(true);
 const selectedVariantId = ref(getDefaultVariantForStructure('mindmap').id);
+
+const dialogVisible = computed({
+  get: () => visible.value,
+  set: (v: boolean) => {
+    visible.value = v;
+    if (!v) emit('cancel');
+  },
+});
 </script>
 
 <template>
-  <div class="dialog-overlay" @click.self="emit('cancel')">
-    <div class="dialog">
-      <h2>{{ $t('newDocument.title') }}</h2>
-      <p class="hint">{{ $t('newDocument.structure') }}</p>
-      <StructureVariantPicker
-        :selected-variant-id="selectedVariantId"
-        compact
-        @select="(id) => (selectedVariantId = id)"
-      />
-      <div class="actions">
-        <button type="button" @click="emit('cancel')">取消</button>
-        <button type="button" class="primary" @click="emit('confirm', selectedVariantId)">创建</button>
-      </div>
-    </div>
-  </div>
+  <el-dialog
+    v-model="dialogVisible"
+    :title="$t('newDocument.title')"
+    width="440px"
+    destroy-on-close
+    append-to-body
+  >
+    <p class="hint">{{ $t('newDocument.structure') }}</p>
+    <StructureVariantPicker
+      :selected-variant-id="selectedVariantId"
+      compact
+      @select="(id) => (selectedVariantId = id)"
+    />
+    <template #footer>
+      <el-button @click="emit('cancel')">取消</el-button>
+      <el-button type="primary" @click="emit('confirm', selectedVariantId)">创建</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
-.dialog-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.4);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-.dialog {
-  background: white;
-  padding: 20px 24px;
-  border-radius: 12px;
-  width: min(420px, 92vw);
-  max-height: 85vh;
-  display: flex;
-  flex-direction: column;
-}
-.dialog h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
-}
 .hint {
-  margin: 0 0 8px;
-  color: #666;
+  margin: 0 0 12px;
+  color: var(--el-text-color-secondary);
   font-size: 13px;
-}
-.actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 16px;
-  padding-top: 12px;
-  border-top: 1px solid #eee;
-}
-.actions button {
-  padding: 6px 16px;
-  border-radius: 4px;
-  border: 1px solid #ccc;
-  background: #fff;
-  cursor: pointer;
-}
-.primary {
-  background: #4a90d9 !important;
-  color: white;
-  border-color: #4a90d9 !important;
 }
 </style>

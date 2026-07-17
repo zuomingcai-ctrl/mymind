@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { ElMessageBox } from 'element-plus';
+import { Close, Plus } from '@element-plus/icons-vue';
 import type { MindMapDocument } from '@mymind/core';
 import { AddSheetCommand, DeleteSheetCommand, RenameSheetCommand } from '@mymind/core';
 import { useDocument } from '../composables/useDocument';
@@ -19,21 +21,20 @@ const store = useDocumentStore();
 function onAdd() {
   const cmd = new AddSheetCommand();
   dispatch(cmd);
-  const doc = store.document;
-  const newSheet = doc?.sheets[doc.sheets.length - 1];
+  const sheets = store.document?.sheets;
+  const newSheet = sheets?.[sheets.length - 1];
   if (newSheet) {
     store.setActiveSheet(newSheet.id);
     emit('switch', newSheet.id);
   }
 }
 
-function onDelete(sheetId: string, event: MouseEvent) {
-  event.stopPropagation();
+function onDelete(sheetId: string, e?: Event) {
+  e?.stopPropagation();
   if (!props.document || props.document.sheets.length <= 1) return;
   dispatch(new DeleteSheetCommand(sheetId));
   if (props.activeSheetId === sheetId) {
-    const doc = store.document;
-    const first = doc?.sheets[0];
+    const first = store.document?.sheets[0];
     if (first) {
       store.setActiveSheet(first.id);
       emit('switch', first.id);
@@ -41,36 +42,64 @@ function onDelete(sheetId: string, event: MouseEvent) {
   }
 }
 
-function onRename(sheetId: string, title: string) {
-  if (!title.trim()) return;
-  dispatch(new RenameSheetCommand(sheetId, title.trim()));
+function onSelect(sheetId: string) {
+  if (sheetId === props.activeSheetId) return;
+  emit('switch', sheetId);
 }
 
-function onDblClick(sheetId: string, title: string) {
-  const next = prompt('重命名画布', title);
-  if (next !== null) onRename(sheetId, next);
+async function onRename(sheetId: string, title: string) {
+  try {
+    const { value } = await ElMessageBox.prompt('重命名画布', '画布', {
+      inputValue: title,
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    });
+    if (!value?.trim()) return;
+    dispatch(new RenameSheetCommand(sheetId, value.trim()));
+  } catch {
+    // cancelled
+  }
 }
 </script>
 
 <template>
-  <div v-if="document" class="sheet-tabs">
-    <button
-      v-for="sheet in document.sheets"
-      :key="sheet.id"
-      class="sheet-tab"
-      :class="{ active: sheet.id === activeSheetId }"
-      @click="emit('switch', sheet.id)"
-      @dblclick="onDblClick(sheet.id, sheet.title)"
-    >
-      <span>{{ sheet.title }}</span>
-      <span
-        v-if="document.sheets.length > 1"
-        class="close"
-        title="删除画布"
-        @click="onDelete(sheet.id, $event)"
-      >×</span>
-    </button>
-    <button class="sheet-tab add" title="新建画布" @click="onAdd">+</button>
+  <div v-if="document" class="sheet-tabs" data-testid="sheet-tabs">
+    <div class="sheet-list" role="tablist">
+      <button
+        v-for="sheet in document.sheets"
+        :key="sheet.id"
+        type="button"
+        role="tab"
+        class="sheet-tab"
+        :class="{ active: sheet.id === activeSheetId }"
+        :aria-selected="sheet.id === activeSheetId"
+        :data-sheet-id="sheet.id"
+        @click="onSelect(sheet.id)"
+        @dblclick="onRename(sheet.id, sheet.title)"
+      >
+        <span class="sheet-title">{{ sheet.title }}</span>
+        <button
+          v-if="document.sheets.length > 1"
+          type="button"
+          class="sheet-close"
+          title="删除画布"
+          data-testid="sheet-close"
+          @click="onDelete(sheet.id, $event)"
+        >
+          <el-icon :size="12"><Close /></el-icon>
+        </button>
+      </button>
+      <button
+        type="button"
+        class="sheet-add"
+        data-testid="sheet-add"
+        title="添加画布"
+        @click="onAdd"
+      >
+        <el-icon :size="14"><Plus /></el-icon>
+        <span>添加</span>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -78,40 +107,82 @@ function onDblClick(sheetId: string, title: string) {
 .sheet-tabs {
   display: flex;
   align-items: center;
+  padding: 4px 8px;
+  background: var(--el-fill-color-light);
+  border-bottom: 1px solid var(--el-border-color-light);
+  min-height: 36px;
+}
+.sheet-list {
+  display: flex;
+  align-items: center;
   gap: 4px;
-  padding: 4px 12px;
-  background: #f0f0f0;
-  border-bottom: 1px solid #ddd;
+  min-width: 0;
+  max-width: 100%;
   overflow-x: auto;
 }
 .sheet-tab {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 4px 12px;
-  border: 1px solid #ccc;
-  border-radius: 4px 4px 0 0;
-  background: #e8e8e8;
+  max-width: 160px;
+  padding: 4px 10px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
   cursor: pointer;
+  font: inherit;
   font-size: 13px;
+  line-height: 1.4;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 .sheet-tab.active {
-  background: #fff;
-  border-bottom-color: #fff;
-  font-weight: 500;
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
-.sheet-tab.add {
+.sheet-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sheet-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: var(--el-text-color-secondary);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.sheet-close:hover {
+  color: var(--el-color-danger);
+  background: var(--el-fill-color);
+}
+.sheet-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
   padding: 4px 10px;
-  font-weight: 600;
+  border: 1px dashed var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.4;
+  white-space: nowrap;
 }
-.close {
-  font-size: 14px;
-  line-height: 1;
-  opacity: 0.5;
-}
-.close:hover {
-  opacity: 1;
-  color: #c00;
+.sheet-add:hover {
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
 }
 </style>

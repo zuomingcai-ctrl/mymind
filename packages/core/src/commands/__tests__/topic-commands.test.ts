@@ -7,6 +7,7 @@ import {
   UpdateTopicTitleCommand,
   ToggleCollapseCommand,
 } from '../topic-commands.js';
+import { AddSummaryCommand } from '../structure-commands.js';
 
 describe('Topic commands', () => {
   const setup = () => {
@@ -64,5 +65,31 @@ describe('Topic commands', () => {
     expect(d.sheets[0]!.rootTopic.collapsed).toBe(true);
     d = cmd.undo(d);
     expect(d.sheets[0]!.rootTopic.collapsed).toBe(false);
+  });
+
+  it('AddTopicCommand adds child under summary topic', () => {
+    const { doc, sheetId, rootId } = setup();
+    let d = new AddTopicCommand(sheetId, rootId, 'a').execute(doc);
+    d = new AddTopicCommand(sheetId, rootId, 'b').execute(d);
+    const ids = d.sheets[0]!.rootTopic.children.map((c) => c.id);
+    d = new AddSummaryCommand(sheetId, rootId, [ids[0]!, ids[1]!]).execute(d);
+    const summaryTopicId = d.sheets[0]!.summaries[0]!.summaryTopicId;
+    d = new AddTopicCommand(sheetId, summaryTopicId, '概要子主题').execute(d);
+    const floating = d.sheets[0]!.floatingTopics.find((t) => t.id === summaryTopicId)!;
+    expect(floating.children).toHaveLength(1);
+    expect(floating.children[0]!.title).toBe('概要子主题');
+  });
+
+  it('DeleteTopicCommand removes child under summary topic', () => {
+    const { doc, sheetId, rootId } = setup();
+    let d = new AddTopicCommand(sheetId, rootId, 'a').execute(doc);
+    d = new AddTopicCommand(sheetId, rootId, 'b').execute(d);
+    const ids = d.sheets[0]!.rootTopic.children.map((c) => c.id);
+    d = new AddSummaryCommand(sheetId, rootId, [ids[0]!, ids[1]!]).execute(d);
+    const summaryTopicId = d.sheets[0]!.summaries[0]!.summaryTopicId;
+    d = new AddTopicCommand(sheetId, summaryTopicId, '概要子主题').execute(d);
+    const childId = d.sheets[0]!.floatingTopics.find((t) => t.id === summaryTopicId)!.children[0]!.id;
+    d = new DeleteTopicCommand(sheetId, childId).execute(d);
+    expect(d.sheets[0]!.floatingTopics.find((t) => t.id === summaryTopicId)!.children).toHaveLength(0);
   });
 });

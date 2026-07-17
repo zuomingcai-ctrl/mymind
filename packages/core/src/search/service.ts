@@ -4,22 +4,27 @@ export interface SearchResult {
   topicId: string;
   sheetId: string;
   title: string;
-  matchField: 'title' | 'note' | 'label';
+  matchField: 'title' | 'note' | 'label' | 'relationship';
   snippet: string;
 }
 
+export interface SearchOptions {
+  /** SE-006: include relationship line titles (default false) */
+  includeRelationships?: boolean;
+}
+
 export class SearchService {
-  searchDocument(doc: MindMapDocument, query: string): SearchResult[] {
+  searchDocument(doc: MindMapDocument, query: string, options?: SearchOptions): SearchResult[] {
     if (!query.trim()) return [];
     const q = query.toLowerCase();
     const results: SearchResult[] = [];
     for (const sheet of doc.sheets) {
-      results.push(...this.searchSheet(sheet, q));
+      results.push(...this.searchSheet(sheet, q, options));
     }
     return results;
   }
 
-  searchSheet(sheet: Sheet, query: string): SearchResult[] {
+  searchSheet(sheet: Sheet, query: string, options?: SearchOptions): SearchResult[] {
     const results: SearchResult[] = [];
     const walk = (topic: Topic) => {
       if (topic.title.toLowerCase().includes(query)) {
@@ -55,6 +60,21 @@ export class SearchService {
     };
     walk(sheet.rootTopic);
     for (const f of sheet.floatingTopics) walk(f);
+
+    if (options?.includeRelationships) {
+      for (const rel of sheet.relationships) {
+        const text = (rel.title ?? '').toLowerCase();
+        if (text && text.includes(query)) {
+          results.push({
+            topicId: rel.fromTopicId,
+            sheetId: sheet.id,
+            title: rel.title ?? '',
+            matchField: 'relationship',
+            snippet: rel.title ?? '',
+          });
+        }
+      }
+    }
     return results;
   }
 

@@ -191,6 +191,38 @@ export class AddFloatingTopicCommand implements Command {
   }
 }
 
+export class DeleteFloatingTopicCommand implements Command {
+  readonly name = 'DeleteFloatingTopic';
+  private snapshot: Topic | null = null;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly topicId: string,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => {
+      const topic = sheet.floatingTopics.find((t) => t.id === this.topicId);
+      if (!topic) return sheet;
+      this.snapshot = JSON.parse(JSON.stringify(topic));
+      return {
+        ...sheet,
+        floatingTopics: sheet.floatingTopics.filter((t) => t.id !== this.topicId),
+        // Also drop any summary that pointed at this floating topic
+        summaries: sheet.summaries.filter((s) => s.summaryTopicId !== this.topicId),
+      };
+    });
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    if (!this.snapshot) return state;
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      floatingTopics: [...sheet.floatingTopics, this.snapshot!],
+    }));
+  }
+}
+
 function findParent(root: Topic, id: string): Topic | null {
   for (const child of root.children) {
     if (child.id === id) return root;

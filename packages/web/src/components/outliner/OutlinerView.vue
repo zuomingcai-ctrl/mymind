@@ -2,6 +2,7 @@
 import { computed, reactive, watch } from 'vue';
 import type { Sheet } from '@mymind/core';
 import { UpdateTopicTitleCommand, ToggleCollapseCommand, findParentOfTopic } from '@mymind/core';
+import { ArrowRight, ArrowDown } from '@element-plus/icons-vue';
 import { useDocument } from '../../composables/useDocument';
 
 const props = defineProps<{
@@ -80,8 +81,8 @@ function displayTitle(row: Row): string {
   return localTitles[row.id] ?? row.title;
 }
 
-function onInput(row: Row, event: Event) {
-  localTitles[row.id] = (event.target as HTMLInputElement).value;
+function onInput(row: Row, value: string) {
+  localTitles[row.id] = value;
 }
 
 function commitEdit(topicId: string, oldTitle: string, nextTitle: string) {
@@ -91,20 +92,19 @@ function commitEdit(topicId: string, oldTitle: string, nextTitle: string) {
   dispatch(new UpdateTopicTitleCommand(props.sheet.id, topicId, title, oldTitle));
 }
 
-function onBlur(row: Row, event: Event) {
-  const value = (event.target as HTMLInputElement).value;
+function onBlur(row: Row) {
+  const value = localTitles[row.id] ?? row.title;
   delete localTitles[row.id];
   commitEdit(row.id, row.title, value);
 }
 
-function onKeyDown(row: Row, event: KeyboardEvent) {
-  event.stopPropagation();
-  if (event.key === 'Enter') {
-    event.preventDefault();
-    const value = (event.target as HTMLInputElement).value;
-    delete localTitles[row.id];
-    commitEdit(row.id, row.title, value);
-    (event.target as HTMLInputElement).blur();
+function onKeyDown(row: Row, event: Event | KeyboardEvent) {
+  const e = event as KeyboardEvent;
+  e.stopPropagation();
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    onBlur(row);
+    (e.target as HTMLElement)?.blur?.();
   }
 }
 
@@ -130,7 +130,6 @@ function onDrop(row: Row, event: DragEvent) {
   if (!topicId || !props.sheet || topicId === row.id) return;
   if (topicId === props.sheet.rootTopic.id) return;
   const parent = findParentOfTopic(props.sheet.rootTopic, row.id);
-  // drop as sibling before target, or as child if alt
   if (event.altKey) {
     emit('move', { topicId, newParentId: row.id, newIndex: 0 });
   } else if (parent) {
@@ -147,101 +146,112 @@ function onDragOver(event: DragEvent) {
 </script>
 
 <template>
-  <div class="outliner">
+  <aside class="outliner" role="tree" :aria-label="'大纲'">
     <div class="outliner-header">
       <span>标题</span>
       <span>标签</span>
     </div>
-    <div
-      v-for="row in rows"
-      :key="row.id"
-      class="outliner-row"
-      :class="{ selected: selectedSet.has(row.id) }"
-      :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
-      draggable="true"
-      @click="onRowClick(row, $event)"
-      @dragstart="onDragStart(row, $event)"
-      @dragover="onDragOver"
-      @drop="onDrop(row, $event)"
-    >
-      <button
-        v-if="row.hasChildren"
-        type="button"
-        class="collapse-btn"
-        @click="toggleCollapse(row, $event)"
+    <el-scrollbar class="outliner-scroll">
+      <div
+        v-for="row in rows"
+        :key="row.id"
+        class="outliner-row"
+        role="treeitem"
+        :aria-selected="selectedSet.has(row.id)"
+        :aria-level="row.depth + 1"
+        :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
+        :class="{ selected: selectedSet.has(row.id) }"
+        :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
+        draggable="true"
+        @click="onRowClick(row, $event)"
+        @dragstart="onDragStart(row, $event)"
+        @dragover="onDragOver"
+        @drop="onDrop(row, $event)"
       >
-        {{ row.collapsed ? '▶' : '▼' }}
-      </button>
-      <span v-else class="collapse-spacer" />
-      <input
-        :value="displayTitle(row)"
-        class="outliner-input"
-        :data-topic-id="row.id"
-        @input="onInput(row, $event)"
-        @blur="onBlur(row, $event)"
-        @keydown="onKeyDown(row, $event)"
-        @click.stop
-      />
-      <span class="col-meta">{{ row.labels }}</span>
-    </div>
-  </div>
+        <el-button
+          v-if="row.hasChildren"
+          class="collapse-btn"
+          text
+          size="small"
+          :icon="row.collapsed ? ArrowRight : ArrowDown"
+          @click="toggleCollapse(row, $event)"
+        />
+        <span v-else class="collapse-spacer" />
+        <el-input
+          :model-value="displayTitle(row)"
+          class="outliner-input"
+          size="small"
+          :data-topic-id="row.id"
+          @update:model-value="(v: string) => onInput(row, v)"
+          @blur="onBlur(row)"
+          @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
+          @click.stop
+        />
+        <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
+          {{ row.labels }}
+        </el-tag>
+      </div>
+    </el-scrollbar>
+  </aside>
 </template>
 
 <style scoped>
 .outliner {
   width: 280px;
   flex-shrink: 0;
-  border-right: 1px solid #ddd;
-  overflow-y: auto;
-  background: #fff;
+  border-right: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
   font-size: 13px;
+  display: flex;
+  flex-direction: column;
 }
 .outliner-header {
   display: flex;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 8px 12px;
   font-size: 11px;
-  color: #888;
-  border-bottom: 1px solid #eee;
+  color: var(--el-text-color-secondary);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.outliner-scroll {
+  flex: 1;
 }
 .outliner-row {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 2px 8px;
   cursor: grab;
 }
 .outliner-row.selected {
-  background: #e8f4fd;
+  background: var(--el-color-primary-light-9);
 }
 .outliner-input {
-  border: none;
-  background: transparent;
   flex: 1;
   min-width: 0;
-  font-size: 13px;
 }
-.outliner-input:focus {
-  outline: 1px solid #4a90d9;
-  background: #fff;
+.outliner-input :deep(.el-input__wrapper) {
+  box-shadow: none !important;
+  background: transparent;
+  padding-left: 4px;
+  padding-right: 4px;
+}
+.outliner-input :deep(.el-input__wrapper.is-focus) {
+  box-shadow: 0 0 0 1px var(--el-color-primary) inset !important;
+  background: var(--el-bg-color);
 }
 .collapse-btn {
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  width: 16px;
-  font-size: 10px;
-  padding: 0;
+  width: 20px;
+  height: 20px;
+  padding: 0 !important;
+  min-height: 20px;
 }
 .collapse-spacer {
-  width: 16px;
+  width: 20px;
 }
 .col-meta {
-  font-size: 11px;
-  color: #999;
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
 }
 </style>

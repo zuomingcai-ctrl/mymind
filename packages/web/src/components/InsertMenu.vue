@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { computed } from 'vue';
 import type { Sheet } from '@mymind/core';
+import { Plus, ArrowRight } from '@element-plus/icons-vue';
 import {
   INSERT_ITEMS,
   LINK_SUBMENU,
@@ -19,9 +20,6 @@ const emit = defineEmits<{
   insert: [id: InsertActionId];
 }>();
 
-const open = ref(false);
-const linkOpen = ref(false);
-const rootRef = ref<HTMLElement | null>(null);
 const { recent } = useRecentInserts();
 
 const enableCtx = computed(() => ({
@@ -50,20 +48,7 @@ function enabled(id: InsertActionId): boolean {
 function onPick(id: InsertActionId) {
   if (!enabled(id)) return;
   emit('insert', id);
-  open.value = false;
-  linkOpen.value = false;
 }
-
-function onDocClick(e: MouseEvent) {
-  if (!open.value) return;
-  if (rootRef.value && !rootRef.value.contains(e.target as Node)) {
-    open.value = false;
-    linkOpen.value = false;
-  }
-}
-
-onMounted(() => document.addEventListener('mousedown', onDocClick));
-onUnmounted(() => document.removeEventListener('mousedown', onDocClick));
 
 const recentItems = computed(() =>
   recent.value
@@ -73,105 +58,92 @@ const recentItems = computed(() =>
 </script>
 
 <template>
-  <div ref="rootRef" class="insert-menu" data-testid="insert-menu">
-    <button
-      type="button"
-      class="insert-trigger"
-      :aria-expanded="open"
-      @click="open = !open"
-    >
-      + 插入
-    </button>
-    <div v-if="open" class="insert-dropdown" role="menu">
-      <div v-if="recentItems.length" class="recent-row">
-        <span class="recent-label">最近</span>
-        <button
-          v-for="item in recentItems"
-          :key="item.id"
-          type="button"
-          class="menu-item recent"
-          :disabled="!enabled(item.id)"
-          @click="onPick(item.id)"
-        >
-          {{ item.label }}
-        </button>
-      </div>
-      <div class="columns">
-        <div class="col">
-          <button
-            v-for="id in leftItems"
-            :key="id"
-            type="button"
-            class="menu-item"
-            :disabled="!enabled(id)"
-            @click="onPick(id)"
+  <el-dropdown
+    data-testid="insert-menu"
+    trigger="click"
+    placement="bottom-start"
+    :hide-on-click="true"
+    :teleported="false"
+  >
+    <el-button type="primary" class="insert-trigger" data-testid="insert-trigger">
+      <el-icon class="el-icon--left"><Plus /></el-icon>
+      插入
+    </el-button>
+    <template #dropdown>
+      <div class="insert-dropdown" data-testid="insert-dropdown" role="menu" @click.stop>
+        <div v-if="recentItems.length" class="recent-row">
+          <span class="recent-label">最近</span>
+          <el-button
+            v-for="item in recentItems"
+            :key="item.id"
+            class="menu-item recent"
+            size="small"
+            text
+            :disabled="!enabled(item.id)"
+            @click="onPick(item.id)"
           >
-            {{ insertItemLabel(id) }}
-          </button>
-          <div
-            class="submenu-wrap"
-            @mouseenter="linkOpen = true"
-            @mouseleave="linkOpen = false"
-          >
-            <button
-              type="button"
-              class="menu-item has-sub"
-              :disabled="!enabled('link-web')"
-              @click="linkOpen = !linkOpen"
+            {{ item.label }}
+          </el-button>
+        </div>
+        <div class="columns">
+          <div class="col">
+            <el-button
+              v-for="id in leftItems"
+              :key="id"
+              class="menu-item"
+              text
+              :disabled="!enabled(id)"
+              @click="onPick(id)"
             >
-              链接 ▸
-            </button>
-            <div v-if="linkOpen" class="submenu" role="menu">
-              <button
-                v-for="id in LINK_SUBMENU"
-                :key="id"
-                type="button"
-                class="menu-item"
-                :disabled="!enabled(id)"
-                @click="onPick(id)"
-              >
-                {{ insertItemLabel(id) }}
-              </button>
-            </div>
+              {{ insertItemLabel(id) }}
+            </el-button>
+            <el-dropdown
+              placement="right-start"
+              trigger="click"
+              :teleported="false"
+              :disabled="!enabled('link-web')"
+            >
+              <el-button class="menu-item has-sub" text :disabled="!enabled('link-web')">
+                链接
+                <el-icon class="el-icon--right"><ArrowRight /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu class="submenu">
+                  <el-dropdown-item
+                    v-for="id in LINK_SUBMENU"
+                    :key="id"
+                    class="menu-item"
+                    :disabled="!enabled(id)"
+                    @click="onPick(id)"
+                  >
+                    {{ insertItemLabel(id) }}
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
+          <div class="col">
+            <el-button
+              v-for="id in rightItems"
+              :key="id"
+              class="menu-item"
+              text
+              :disabled="!enabled(id)"
+              @click="onPick(id)"
+            >
+              {{ insertItemLabel(id) }}
+            </el-button>
           </div>
         </div>
-        <div class="col">
-          <button
-            v-for="id in rightItems"
-            :key="id"
-            type="button"
-            class="menu-item"
-            :disabled="!enabled(id)"
-            @click="onPick(id)"
-          >
-            {{ insertItemLabel(id) }}
-          </button>
-        </div>
       </div>
-    </div>
-  </div>
+    </template>
+  </el-dropdown>
 </template>
 
 <style scoped>
-.insert-menu {
-  position: relative;
-  display: inline-block;
-}
-.insert-trigger {
-  padding: 4px 10px;
-  cursor: pointer;
-}
 .insert-dropdown {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  z-index: 40;
-  margin-top: 4px;
   min-width: 280px;
-  background: #fff;
-  border: 1px solid #ccc;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
-  padding: 8px;
+  padding: 8px 10px;
 }
 .recent-row {
   display: flex;
@@ -180,11 +152,11 @@ const recentItems = computed(() =>
   align-items: center;
   margin-bottom: 8px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--el-border-color-lighter);
 }
 .recent-label {
   font-size: 11px;
-  color: #888;
+  color: var(--el-text-color-secondary);
   margin-right: 4px;
 }
 .columns {
@@ -196,41 +168,12 @@ const recentItems = computed(() =>
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: stretch;
 }
 .menu-item {
-  text-align: left;
-  padding: 6px 8px;
-  border: none;
-  background: transparent;
-  cursor: pointer;
-  border-radius: 4px;
-  font-size: 13px;
-}
-.menu-item:hover:not(:disabled) {
-  background: #f0f4f8;
-}
-.menu-item:disabled {
-  color: #bbb;
-  cursor: not-allowed;
-}
-.menu-item.recent {
-  background: #f5f5f5;
-  font-size: 12px;
-}
-.submenu-wrap {
-  position: relative;
-}
-.submenu {
-  position: absolute;
-  left: 100%;
-  top: 0;
-  margin-left: 4px;
-  min-width: 88px;
-  background: #fff;
-  border: 1px solid #ccc;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  padding: 4px;
-  z-index: 41;
+  justify-content: flex-start;
+  width: 100%;
+  margin: 0 !important;
 }
 .has-sub {
   display: flex;

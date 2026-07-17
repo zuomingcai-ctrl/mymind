@@ -8,7 +8,7 @@ import {
   UpdateHyperlinkCommand,
   AddAttachmentCommand,
 } from '../../commands/media-commands.js';
-import { AddZoneCommand, AddTodoCommand, ToggleTodoCommand, todoCompletionRate } from '../../commands/zone-todo-commands.js';
+import { AddZoneCommand, AddTodoCommand, ToggleTodoCommand, DeleteTodoCommand, ReorderTodosCommand, todoCompletionRate } from '../../commands/zone-todo-commands.js';
 import { SearchService, getBranchTopicIds } from '../../search/service.js';
 import { sanitizeHtml } from '../../utils/sanitize.js';
 import { TextMeasurer } from '../../layout/measure.js';
@@ -139,6 +139,38 @@ describe('Phase 3 core', () => {
       { id: '5', text: 'e', checked: false, order: 4 },
     ];
     expect(todoCompletionRate(todos).label).toBe('2/5');
+  });
+
+  it('DeleteTodoCommand removes item and undo restores', () => {
+    let d = createDocument();
+    const sheetId = d.sheets[0]!.id;
+    const rootId = d.sheets[0]!.rootTopic.id;
+    d = new AddTodoCommand(sheetId, rootId, 'a').execute(d);
+    d = new AddTodoCommand(sheetId, rootId, 'b').execute(d);
+    const todos = d.sheets[0]!.rootTopic.todos!;
+    expect(todos).toHaveLength(2);
+    const del = new DeleteTodoCommand(sheetId, rootId, todos[0]!.id);
+    d = del.execute(d);
+    expect(d.sheets[0]!.rootTopic.todos).toHaveLength(1);
+    expect(d.sheets[0]!.rootTopic.todos![0]!.text).toBe('b');
+    d = del.undo(d);
+    expect(d.sheets[0]!.rootTopic.todos).toHaveLength(2);
+  });
+
+  it('ReorderTodosCommand changes order', () => {
+    let d = createDocument();
+    const sheetId = d.sheets[0]!.id;
+    const rootId = d.sheets[0]!.rootTopic.id;
+    d = new AddTodoCommand(sheetId, rootId, 'a').execute(d);
+    d = new AddTodoCommand(sheetId, rootId, 'b').execute(d);
+    d = new AddTodoCommand(sheetId, rootId, 'c').execute(d);
+    const ids = d.sheets[0]!.rootTopic.todos!.map((t) => t.id);
+    const reordered = [ids[2]!, ids[0]!, ids[1]!];
+    const cmd = new ReorderTodosCommand(sheetId, rootId, reordered);
+    d = cmd.execute(d);
+    expect(d.sheets[0]!.rootTopic.todos!.map((t) => t.text)).toEqual(['c', 'a', 'b']);
+    d = cmd.undo(d);
+    expect(d.sheets[0]!.rootTopic.todos!.map((t) => t.text)).toEqual(['a', 'b', 'c']);
   });
 
   it('markdown export/import roundtrip', () => {

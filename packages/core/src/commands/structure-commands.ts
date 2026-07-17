@@ -153,16 +153,20 @@ export class AddRelationshipCommand implements Command {
     private readonly fromTopicId: string,
     private readonly toTopicId: string,
     private readonly title?: string,
+    private readonly fromKind: import('../model/types.js').RelEndpointKind = 'topic',
+    private readonly toKind: import('../model/types.js').RelEndpointKind = 'topic',
   ) {}
 
   execute(state: MindMapDocument): MindMapDocument {
-    if (this.fromTopicId === this.toTopicId) {
+    if (this.fromTopicId === this.toTopicId && this.fromKind === this.toKind) {
       throw new Error('Relationship cannot be self-loop');
     }
     const rel: Relationship = {
       id: generateId(),
       fromTopicId: this.fromTopicId,
       toTopicId: this.toTopicId,
+      fromKind: this.fromKind,
+      toKind: this.toKind,
       title: this.title,
       style: { lineType: 'curve', color: '#666', width: 2, arrowStart: false, arrowEnd: true },
     };

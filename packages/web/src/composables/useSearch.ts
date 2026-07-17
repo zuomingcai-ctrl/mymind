@@ -5,6 +5,8 @@ import { useDocumentStore } from '../stores/document';
 export function useSearch() {
   const query = ref('');
   const results = ref<SearchResult[]>([]);
+  /** SE-006 */
+  const includeRelationships = ref(false);
   const service = new SearchService();
 
   function search() {
@@ -13,16 +15,18 @@ export function useSearch() {
       results.value = [];
       return;
     }
-    results.value = service.searchDocument(store.document, query.value);
+    results.value = service.searchDocument(store.document, query.value, {
+      includeRelationships: includeRelationships.value,
+    });
   }
 
   function selectResult(result: SearchResult) {
     const store = useDocumentStore();
-    store.activeSheetId = result.sheetId;
-    store.selection = [result.topicId];
+    store.setActiveSheet(result.sheetId);
+    store.setSelection([result.topicId]);
   }
 
   const hasResults = computed(() => results.value.length > 0);
 
-  return { query, results, hasResults, search, selectResult };
+  return { query, results, hasResults, search, selectResult, includeRelationships };
 }
