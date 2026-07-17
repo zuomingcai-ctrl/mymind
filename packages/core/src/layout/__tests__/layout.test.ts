@@ -1,8 +1,9 @@
-// covers: TE-003, ST-001, ST-002, ST-003, ED-009
+// covers: TE-003, ST-001, ST-002, ST-003, ED-009, PS-006
 import { describe, it, expect } from 'vitest';
 import { createDocument } from '../../model/factory.js';
 import { AddTopicCommand, ToggleCollapseCommand } from '../../commands/topic-commands.js';
-import { TextMeasurer, createMeasureFn } from '../measure.js';
+import { UpdateTopicStyleCommand } from '../../commands/phase4-commands.js';
+import { TextMeasurer, createMeasureFn, wrapPlainText } from '../measure.js';
 import { createDefaultLayoutRegistry } from '../registry.js';
 import { buildTree } from '@mymind/test-utils';
 
@@ -15,6 +16,29 @@ describe('layout', () => {
     const size = m.measureText('Hello');
     expect(size.width).toBeGreaterThanOrEqual(80);
     expect(size.height).toBeGreaterThan(0);
+  });
+
+  it('wrapPlainText breaks long text when width is tight', () => {
+    const lines = wrapPlainText('一二三四五六七八九十', 40);
+    expect(lines.length).toBeGreaterThan(1);
+  });
+
+  it('fixed topic width wraps text and grows height', () => {
+    const doc = createDocument();
+    const rootId = doc.sheets[0]!.rootTopic.id;
+    const d = new UpdateTopicStyleCommand(doc.sheets[0]!.id, rootId, {
+      width: 60,
+      widthMode: 'fixed',
+    }).execute(doc);
+    d.sheets[0]!.rootTopic.title = '这是一段需要自动绕行的较长主题文字内容';
+    const m = new TextMeasurer();
+    const auto = m.measureTopic(
+      { ...d.sheets[0]!.rootTopic, style: { shape: 'rounded', widthMode: 'auto' } },
+      0,
+    );
+    const fixed = m.measureTopic(d.sheets[0]!.rootTopic, 0);
+    expect(fixed.width).toBe(60);
+    expect(fixed.height).toBeGreaterThan(auto.height);
   });
 
   it('mindmap layout produces nodes for 5-node tree', () => {

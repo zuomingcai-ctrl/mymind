@@ -22,6 +22,44 @@ export interface TextMeasurerOptions {
   maxTextWidth?: number;
 }
 
+/** Approximate CJK/Latin character widths (matches TextMeasurer). */
+export function approximateLineWidth(text: string): number {
+  let width = 0;
+  for (const ch of text) {
+    width += ch.charCodeAt(0) > 127 ? 14 : 8;
+  }
+  return width;
+}
+
+/** Wrap plain text to fit `maxWidth` (character-based approximation). */
+export function wrapPlainText(
+  text: string,
+  maxWidth: number,
+  measureLine: (s: string) => number = approximateLineWidth,
+): string[] {
+  if (!text) return [''];
+  const limit = Math.max(8, maxWidth);
+  const lines: string[] = [];
+  let current = '';
+
+  for (const ch of text) {
+    if (ch === '\n') {
+      lines.push(current);
+      current = '';
+      continue;
+    }
+    const test = current + ch;
+    if (measureLine(test) > limit && current) {
+      lines.push(current);
+      current = ch;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length ? lines : [''];
+}
+
 export class TextMeasurer {
   private maxTextWidth: number;
   private charWidthCache = new Map<string, number>();
@@ -30,29 +68,43 @@ export class TextMeasurer {
     this.maxTextWidth = options.maxTextWidth ?? MAX_TEXT_WIDTH;
   }
 
-  measureText(text: string): { width: number; height: number; lines: string[] } {
-    const lines = this.wrapText(text);
-    const lineWidth = Math.max(...lines.map((l) => this.measureLine(l)), MIN_WIDTH - H_PADDING);
-    const width = Math.min(lineWidth + H_PADDING, this.maxTextWidth + H_PADDING);
+  measureText(
+    text: string,
+    maxTextWidth = this.maxTextWidth,
+  ): { width: number; height: number; lines: string[] } {
+    const lines = wrapPlainText(text, maxTextWidth, (s) => this.measureLine(s));
+    const lineWidth = Math.max(...lines.map((l) => this.measureLine(l)), 0);
+    const width = Math.min(lineWidth + H_PADDING, maxTextWidth + H_PADDING);
     const height = lines.length * LINE_HEIGHT + V_PADDING;
     return { width: Math.max(width, MIN_WIDTH), height, lines };
   }
 
   measureTopic(topic: Topic, _depth: number): Size {
     const text = topic.titleRich ? runsToPlain(topic.titleRich) : topic.title || ' ';
-    const textWidth = topic.titleRich
-      ? measureRunsWidth(topic.titleRich) + H_PADDING
-      : this.measureText(text).width;
-    const textHeight = this.measureText(text).height;
-    let totalHeight = textHeight;
-    let totalWidth = Math.max(textWidth, MIN_WIDTH);
+    const fixedWidth = resolveFixedTopicWidth(topic);
 
     const markersW = estimateMarkersWidth(topic.markers.length);
     const accessoriesW = estimateAccessoriesWidth(listTopicAccessories(topic));
     const sideExtra =
       (markersW ? markersW + TITLE_ACCESSORY_GAP : 0) +
       (accessoriesW ? accessoriesW + TITLE_ACCESSORY_GAP : 0);
-    totalWidth += sideExtra;
+
+    const contentMax = fixedWidth
+      ? Math.max(8, fixedWidth - H_PADDING - sideExtra)
+      : this.maxTextWidth;
+
+    let textBlock: { width: number; height: number; lines: string[] };
+    if (topic.titleRich && !fixedWidth) {
+      // Single-line rich text until wrap is implemented per-run
+      const richW = measureRunsWidth(topic.titleRich) + H_PADDING;
+      const plain = this.measureText(text, contentMax);
+      textBlock = { width: Math.max(richW, MIN_WIDTH), height: plain.height, lines: plain.lines };
+    } else {
+      textBlock = this.measureText(text, contentMax);
+    }
+
+    let totalHeight = textBlock.height;
+    let totalWidth = fixedWidth ?? Math.max(textBlock.width + sideExtra, MIN_WIDTH);
 
     if (topic.image) {
       totalWidth = Math.max(totalWidth, topic.image.width + H_PADDING);
@@ -75,40 +127,33 @@ export class TextMeasurer {
       totalHeight += equationExtraHeight(topic.equation);
     }
 
-    return { width: totalWidth, height: totalHeight };
-  }
-
-  private wrapText(text: string): string[] {
-    if (!text) return [''];
-    const words = text.split('');
-    const lines: string[] = [];
-    let current = '';
-
-    for (const ch of words) {
-      const test = current + ch;
-      if (this.measureLine(test) > this.maxTextWidth && current) {
-        lines.push(current);
-        current = ch;
-      } else {
-        current = test;
-      }
+    if (fixedWidth) {
+      totalWidth = fixedWidth;
     }
-    if (current) lines.push(current);
-    return lines.length ? lines : [''];
+
+    return { width: totalWidth, height: totalHeight };
   }
 
   private measureLine(text: string): number {
     if (this.charWidthCache.has(text)) {
       return this.charWidthCache.get(text)!;
     }
-    // Approximate CJK width as 14px, Latin as 8px
-    let width = 0;
-    for (const ch of text) {
-      width += ch.charCodeAt(0) > 127 ? 14 : 8;
-    }
+    const width = approximateLineWidth(text);
     this.charWidthCache.set(text, width);
     return width;
   }
+}
+
+/** Fixed topic box width when widthMode is fixed (or legacy width-only). */
+export function resolveFixedTopicWidth(topic: Topic): number | undefined {
+  const style = topic.style;
+  if (!style?.width || style.width <= 0) return undefined;
+  if (style.widthMode === 'auto') return undefined;
+  // widthMode undefined + width set → treat as fixed (panel / drag)
+  if (style.widthMode === 'fixed' || style.widthMode === undefined) {
+    return Math.max(40, style.width);
+  }
+  return undefined;
 }
 
 export function createMeasureFn(measurer = new TextMeasurer()): (topic: Topic, depth: number) => Size {

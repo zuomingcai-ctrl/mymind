@@ -81,6 +81,8 @@ export class AddMarkerCommand implements Command {
   readonly name = 'AddMarker';
   private markerId: string | null = null;
   private removedSameCategory: string[] = [];
+  /** Index where the new marker was placed (for order-preserving undo). */
+  private insertIndex = -1;
 
   constructor(
     private readonly sheetId: string,
@@ -95,15 +97,34 @@ export class AddMarkerCommand implements Command {
       updateTopicInSheet(sheet, this.topicId, (t) => {
         if (t.markers.includes(this.markerIconId)) {
           this.removedSameCategory = [];
+          this.insertIndex = -1;
           return t;
         }
         this.removedSameCategory = category
           ? t.markers.filter((m) => getMarker(m)?.category === category)
           : [];
-        const withoutCategory = category
-          ? t.markers.filter((m) => getMarker(m)?.category !== category)
-          : t.markers;
-        return { ...t, markers: [...withoutCategory, this.markerIconId] };
+
+        // Replace same-category marker(s) in place so relative order is unchanged
+        // (e.g. floating toolbar switch must not move the marker to the end).
+        if (category && this.removedSameCategory.length > 0) {
+          let inserted = false;
+          const next: string[] = [];
+          for (const m of t.markers) {
+            if (getMarker(m)?.category === category) {
+              if (!inserted) {
+                this.insertIndex = next.length;
+                next.push(this.markerIconId);
+                inserted = true;
+              }
+            } else {
+              next.push(m);
+            }
+          }
+          return { ...t, markers: next };
+        }
+
+        this.insertIndex = t.markers.length;
+        return { ...t, markers: [...t.markers, this.markerIconId] };
       }),
     );
   }
@@ -112,11 +133,18 @@ export class AddMarkerCommand implements Command {
     if (!this.markerId) return state;
     const id = this.markerId;
     const restored = this.removedSameCategory;
+    const idx = this.insertIndex;
     return updateSheetInDocument(state, this.sheetId, (sheet) =>
-      updateTopicInSheet(sheet, this.topicId, (t) => ({
-        ...t,
-        markers: [...t.markers.filter((m) => m !== id), ...restored],
-      })),
+      updateTopicInSheet(sheet, this.topicId, (t) => {
+        const without = t.markers.filter((m) => m !== id);
+        if (restored.length === 0) {
+          return { ...t, markers: without };
+        }
+        const next = [...without];
+        const at = idx >= 0 ? Math.min(idx, next.length) : next.length;
+        next.splice(at, 0, ...restored);
+        return { ...t, markers: next };
+      }),
     );
   }
 }

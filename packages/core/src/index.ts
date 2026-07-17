@@ -88,7 +88,13 @@ export {
   decorationAtViewportCenter,
   type DecorationWorldRect,
 } from './decorations/placement.js';
-export { TextMeasurer, createMeasureFn } from './layout/measure.js';
+export {
+  TextMeasurer,
+  createMeasureFn,
+  wrapPlainText,
+  approximateLineWidth,
+  resolveFixedTopicWidth,
+} from './layout/measure.js';
 export { LayoutRegistry, createDefaultLayoutRegistry } from './layout/registry.js';
 export { buildFrame } from './render/pipeline.js';
 export { strokeEdge, traceEdgePath, autoCubicControlPoints, defaultRelationshipControlPoint, defaultRelationshipCubicControlPoints, drawRelationshipHandles, drawRelationshipArrows, relationshipLabelPoint, type DrawEdgeOptions } from './render/draw-edge.js';

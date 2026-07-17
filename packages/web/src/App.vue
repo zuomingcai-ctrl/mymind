@@ -13,6 +13,7 @@ import {
   DeleteRelationshipCommand,
   DeleteCalloutCommand,
   UpdateCalloutCommand,
+  UpdateTopicStyleCommand,
   findTopicByCalloutId,
   UpdateRelationshipControlPointsCommand,
   UpdateRelationshipTitleCommand,
@@ -1562,6 +1563,16 @@ function onUpdateCallout(payload: { topicId: string; offset: { x: number; y: num
   dispatch(new UpdateCalloutCommand(activeSheet.value.id, payload.topicId, { offset: payload.offset }));
 }
 
+function onUpdateTopicWidth(payload: { topicId: string; width: number }) {
+  if (!activeSheet.value) return;
+  dispatch(
+    new UpdateTopicStyleCommand(activeSheet.value.id, payload.topicId, {
+      width: payload.width,
+      widthMode: 'fixed',
+    }),
+  );
+}
+
 function onIncludeRelSearch(v: boolean) {
   includeRelationships.value = v;
   search();
@@ -1707,6 +1718,7 @@ onUnmounted(() => {
           @select-decoration="onSelectDecoration"
           @update-decoration="onUpdateDecoration"
           @update-callout="onUpdateCallout"
+          @update-topic-width="onUpdateTopicWidth"
           @select-structure="onSelectStructure"
           @update-relationship-control="onUpdateRelationshipControl"
           @edit-relationship="startEditingRelationship"

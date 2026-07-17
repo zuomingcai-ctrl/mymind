@@ -2,6 +2,7 @@ import type { MindMapDocument, TopicStyle, CanvasDecoration } from '../model/typ
 import {
   generateId,
   updateSheetInDocument,
+  updateTopicInSheet,
   updateTopicInTree,
 } from '../model/factory.js';
 import type { Command } from './types.js';
@@ -135,26 +136,25 @@ export class UpdateTopicStyleCommand implements Command {
   ) {}
 
   execute(state: MindMapDocument): MindMapDocument {
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => {
         this.oldStyle = t.style ? { ...t.style } : undefined;
         return {
           ...t,
           style: { shape: 'rounded', ...t.style, ...this.style },
         };
       }),
-    }));
+    );
   }
 
   undo(state: MindMapDocument): MindMapDocument {
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+    const style = this.oldStyle;
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => ({
         ...t,
-        style: this.oldStyle,
+        style,
       })),
-    }));
+    );
   }
 }
 

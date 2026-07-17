@@ -34,6 +34,8 @@ import {
   todoCompletionRate,
   getDecorationAsset,
   resolveDecorationWorldRect,
+  wrapPlainText,
+  approximateLineWidth,
   type Viewport,
   type Sheet,
   type TopicStyle,
@@ -85,6 +87,7 @@ const emit = defineEmits<{
   ];
   'select-structure': [payload: { kind: StructureSelectionKind; id: string } | null];
   'update-callout': [payload: { topicId: string; offset: { x: number; y: number } }];
+  'update-topic-width': [payload: { topicId: string; width: number }];
   'update-relationship-control': [
     payload: { relationshipId: string; controlPoints: Array<{ x: number; y: number }> },
   ];
@@ -145,6 +148,8 @@ const { panCursor, isPanning, onPointerDown, shouldSuppressClick } = useCanvasPa
 );
 
 const canvasCursor = computed(() => {
+  if (widthResizeDrag.value) return 'ew-resize';
+  if (widthHandleHover.value) return 'ew-resize';
   if (decoDrag.value?.mode === 'resize') return 'nwse-resize';
   if (decoDrag.value?.mode === 'rotate') return 'grabbing';
   if (decoDrag.value?.mode === 'move') return 'move';
@@ -154,7 +159,34 @@ const canvasCursor = computed(() => {
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const registry = createDefaultLayoutRegistry();
-const measure = createMeasureFn();
+const baseMeasure = createMeasureFn();
+
+const widthResizeDrag = ref<{
+  topicId: string;
+  edge: 'left' | 'right';
+  startClientX: number;
+  originWidth: number;
+  liveWidth: number;
+  moved: boolean;
+} | null>(null);
+const widthHandleHover = ref(false);
+
+function measure(topic: Topic, depth: number) {
+  const drag = widthResizeDrag.value;
+  if (drag && drag.topicId === topic.id) {
+    const patched: Topic = {
+      ...topic,
+      style: {
+        shape: topic.style?.shape ?? 'rounded',
+        ...topic.style,
+        width: drag.liveWidth,
+        widthMode: 'fixed',
+      },
+    };
+    return baseMeasure(patched, depth);
+  }
+  return baseMeasure(topic, depth);
+}
 
 function resolveLineType(sheet: Sheet): EdgeStyle['lineType'] {
   const opts = sheet.structureOptions;
@@ -280,6 +312,7 @@ function drawTopicNode(
       ctx.strokeStyle = '#4A90D9';
       ctx.lineWidth = 2;
       ctx.strokeRect(node.x - 2, node.y - 2, node.width + 4, node.height + 4);
+      drawTopicWidthHandles(ctx, node);
     }
     return;
   }
@@ -317,6 +350,7 @@ function drawTopicNode(
     ctx.lineWidth = 2;
     roundRect(ctx, node.x - 2, node.y - 2, node.width + 4, node.height + 4, 8);
     ctx.stroke();
+    drawTopicWidthHandles(ctx, node);
   }
 
   drawTopicAdornments(
@@ -329,6 +363,24 @@ function drawTopicNode(
     content,
     merged.textAlign ?? 'center',
   );
+}
+
+function drawTopicWidthHandles(
+  ctx: CanvasRenderingContext2D,
+  node: { x: number; y: number; width: number; height: number },
+) {
+  const zoom = Math.max(props.viewport.zoom, 0.01);
+  const hw = 5 / zoom;
+  const hh = 10 / zoom;
+  const midY = node.y + node.height / 2;
+  ctx.fillStyle = '#4A90D9';
+  ctx.strokeStyle = '#FFFFFF';
+  ctx.lineWidth = 1 / zoom;
+  for (const x of [node.x, node.x + node.width]) {
+    roundRect(ctx, x - hw / 2, midY - hh / 2, hw, hh, 1 / zoom);
+    ctx.fill();
+    ctx.stroke();
+  }
 }
 
 function drawTopicAdornments(
@@ -454,8 +506,9 @@ function fillTopicTextInBand(
           ? '500'
           : 'normal';
   const italic = style.fontStyle === 'italic' ? 'italic ' : '';
+  const fontSize = style.fontSize ?? 14;
   ctx.fillStyle = style.fontColor ?? '#333333';
-  ctx.font = `${italic}${weight} ${style.fontSize ?? 14}px ${fontFamily}`;
+  ctx.font = `${italic}${weight} ${fontSize}px ${fontFamily}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
 
@@ -463,22 +516,30 @@ function fillTopicTextInBand(
   const right = content.accessoriesWidth
     ? content.accessoriesOrigin.x - 4
     : node.x + node.width - 8;
-  const midY = node.y + content.titleBandHeight / 2;
-  const x =
-    align === 'left' ? left : align === 'right' ? right : (left + right) / 2;
-  ctx.fillText(title, x, midY);
-  if (style.textDecoration === 'underline' || style.textDecoration === 'line-through') {
-    const metrics = ctx.measureText(title);
-    const tw = metrics.width;
-    const textLeft = align === 'left' ? x : align === 'right' ? x - tw : x - tw / 2;
-    const y =
-      style.textDecoration === 'line-through' ? midY : midY + (style.fontSize ?? 14) / 2;
-    ctx.beginPath();
-    ctx.strokeStyle = style.fontColor ?? '#333';
-    ctx.lineWidth = 1;
-    ctx.moveTo(textLeft, y);
-    ctx.lineTo(textLeft + tw, y);
-    ctx.stroke();
+  const maxW = Math.max(8, right - left);
+  const lines = wrapPlainText(title, maxW, approximateLineWidth);
+  const lineH = Math.max(16, fontSize * 1.35);
+  const blockH = lines.length * lineH;
+  const startY = node.y + Math.max(lineH / 2, (content.titleBandHeight - blockH) / 2 + lineH / 2);
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const y = startY + i * lineH;
+    const x = align === 'left' ? left : align === 'right' ? right : (left + right) / 2;
+    ctx.fillText(line, x, y);
+    if (style.textDecoration === 'underline' || style.textDecoration === 'line-through') {
+      const metrics = ctx.measureText(line);
+      const tw = metrics.width;
+      const textLeft = align === 'left' ? x : align === 'right' ? x - tw : x - tw / 2;
+      const decoY =
+        style.textDecoration === 'line-through' ? y : y + fontSize / 2;
+      ctx.beginPath();
+      ctx.strokeStyle = style.fontColor ?? '#333';
+      ctx.lineWidth = 1;
+      ctx.moveTo(textLeft, decoY);
+      ctx.lineTo(textLeft + tw, decoY);
+      ctx.stroke();
+    }
   }
 }
 
@@ -891,6 +952,27 @@ function onMouseDown(event: MouseEvent) {
     if (world) {
       const layout = registry.layout(sheet, measure);
 
+      // Width handles on selected topics (before pan / topic-drag)
+      const widthHit = hitTestTopicWidthHandle(world, layout);
+      if (widthHit) {
+        const node = layout.nodes.get(widthHit.topicId);
+        if (node) {
+          suppressNextClick = true;
+          widthResizeDrag.value = {
+            topicId: widthHit.topicId,
+            edge: widthHit.edge,
+            startClientX: event.clientX,
+            originWidth: node.width,
+            liveWidth: node.width,
+            moved: false,
+          };
+          window.addEventListener('mousemove', onWidthResizeMove);
+          window.addEventListener('mouseup', onWidthResizeEnd);
+          event.preventDefault();
+          return;
+        }
+      }
+
       if (props.selectedStructure?.kind === 'relationship') {
         const selected = layout.edges.find(
           (e) => e.type === 'relationship' && e.id === props.selectedStructure!.id,
@@ -1020,6 +1102,51 @@ function worldToDecorationLocal(
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+}
+
+function hitTestTopicWidthHandle(
+  world: { x: number; y: number },
+  layout: LayoutResult,
+): { topicId: string; edge: 'left' | 'right' } | null {
+  if (!props.selectedIds.length) return null;
+  const pad = 8 / Math.max(props.viewport.zoom, 0.01);
+  for (let i = props.selectedIds.length - 1; i >= 0; i--) {
+    const id = props.selectedIds[i]!;
+    const node = layout.nodes.get(id);
+    if (!node || node.hidden) continue;
+    const midY = node.y + node.height / 2;
+    if (Math.abs(world.y - midY) > Math.max(node.height / 2, pad * 2)) continue;
+    if (Math.abs(world.x - node.x) <= pad) return { topicId: id, edge: 'left' };
+    if (Math.abs(world.x - (node.x + node.width)) <= pad) return { topicId: id, edge: 'right' };
+  }
+  return null;
+}
+
+function onWidthResizeMove(event: MouseEvent) {
+  const drag = widthResizeDrag.value;
+  if (!drag) return;
+  const zoom = Math.max(props.viewport.zoom, 0.01);
+  const dx = (event.clientX - drag.startClientX) / zoom;
+  if (Math.abs(dx) > 1) drag.moved = true;
+  const next =
+    drag.edge === 'right' ? drag.originWidth + dx : drag.originWidth - dx;
+  widthResizeDrag.value = {
+    ...drag,
+    liveWidth: Math.max(40, Math.round(next)),
+  };
+  draw();
+}
+
+function onWidthResizeEnd() {
+  window.removeEventListener('mousemove', onWidthResizeMove);
+  window.removeEventListener('mouseup', onWidthResizeEnd);
+  const drag = widthResizeDrag.value;
+  widthResizeDrag.value = null;
+  if (drag?.moved) {
+    suppressNextClick = true;
+    emit('update-topic-width', { topicId: drag.topicId, width: drag.liveWidth });
+  }
+  draw();
 }
 
 function hitTestDecorationAt(
@@ -1358,6 +1485,21 @@ function onContextMenu(event: MouseEvent) {
   });
 }
 
+function onMouseMoveHover(event: MouseEvent) {
+  if (widthResizeDrag.value || decoDrag.value || calloutDrag.value) return;
+  const sheet = props.sheet;
+  if (!sheet || !props.selectedIds.length) {
+    if (widthHandleHover.value) widthHandleHover.value = false;
+    return;
+  }
+  const world = worldFromEvent(event);
+  if (!world) return;
+  const layout = registry.layout(sheet, measure);
+  const hit = hitTestTopicWidthHandle(world, layout);
+  const next = !!hit;
+  if (widthHandleHover.value !== next) widthHandleHover.value = next;
+}
+
 function pickTopic(
   event: MouseEvent,
   cb: (
@@ -1415,6 +1557,7 @@ onUnmounted(() => {
     :style="{ cursor: canvasCursor }"
     tabindex="-1"
     @mousedown="onMouseDown"
+    @mousemove="onMouseMoveHover"
     @click="onClick"
     @dblclick="onDblClick"
     @contextmenu="onContextMenu"
