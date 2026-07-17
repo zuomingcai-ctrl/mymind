@@ -1,0 +1,17 @@
+{
+  "name": "@mymind/desktop",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm exec tauri dev",
+    "build": "node ./scripts/validate.mjs",
+    "build:tauri": "pnpm exec tauri build",
+    "tauri": "pnpm exec tauri"
+  },
+  "dependencies": {
+    "@mymind/web": "workspace:*"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.2.0"
+  }
+}

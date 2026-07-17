@@ -1,0 +1,34 @@
+{
+  "app": {
+    "title": "MyMind",
+    "untitled": "Untitled"
+  },
+  "toolbar": {
+    "new": "New",
+    "save": "Save",
+    "open": "Open",
+    "export": "Export PNG",
+    "undo": "Undo",
+    "redo": "Redo",
+    "templates": "Templates",
+    "print": "Print",
+    "pitch": "Pitch"
+  },
+  "statusBar": {
+    "zoom": "Zoom"
+  },
+  "newDocument": {
+    "title": "New Document",
+    "structure": "Choose structure",
+    "mindmap": "Mind Map",
+    "logicChart": "Logic Chart",
+    "treeChart": "Tree Chart"
+  },
+  "templates": {
+    "title": "Templates",
+    "learning": "Learning",
+    "work": "Work",
+    "life": "Life",
+    "analysis": "Analysis"
+  }
+}

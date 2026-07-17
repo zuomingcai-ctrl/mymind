@@ -1,0 +1,24 @@
+{
+  "app": {
+    "title": "MyMind",
+    "untitled": "未命名"
+  },
+  "toolbar": {
+    "new": "新建",
+    "save": "保存",
+    "open": "打开",
+    "export": "导出 PNG",
+    "undo": "撤销",
+    "redo": "重做"
+  },
+  "statusBar": {
+    "zoom": "缩放"
+  },
+  "newDocument": {
+    "title": "新建文档",
+    "structure": "选择结构",
+    "mindmap": "思维导图",
+    "logicChart": "逻辑图",
+    "treeChart": "树状图"
+  }
+}

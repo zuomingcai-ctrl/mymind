@@ -1,0 +1,11 @@
+node_modules
+dist
+*.local
+.DS_Store
+
+# Accidental tsc emit into web/src (source is .ts/.vue only)
+packages/web/src/**/*.js
+packages/web/src/**/*.js.map
+packages/web/src/**/*.d.ts
+packages/web/src/**/*.d.ts.map
+!packages/web/env.d.ts
