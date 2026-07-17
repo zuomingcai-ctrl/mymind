@@ -5,7 +5,9 @@ import {
   generateId,
   updateSheetInDocument,
   updateTopicInTree,
+  updateTopicInSheet,
 } from '../model/factory.js';
+import { getMarker } from '../markers/presets.js';
 import type { Command } from './types.js';
 
 export class UpdateNoteCommand implements Command {
@@ -78,6 +80,7 @@ export class AddLabelCommand implements Command {
 export class AddMarkerCommand implements Command {
   readonly name = 'AddMarker';
   private markerId: string | null = null;
+  private removedSameCategory: string[] = [];
 
   constructor(
     private readonly sheetId: string,
@@ -87,25 +90,34 @@ export class AddMarkerCommand implements Command {
 
   execute(state: MindMapDocument): MindMapDocument {
     this.markerId = this.markerIconId;
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
-        ...t,
-        markers: [...t.markers, this.markerIconId],
-      })),
-    }));
+    const category = getMarker(this.markerIconId)?.category;
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => {
+        if (t.markers.includes(this.markerIconId)) {
+          this.removedSameCategory = [];
+          return t;
+        }
+        this.removedSameCategory = category
+          ? t.markers.filter((m) => getMarker(m)?.category === category)
+          : [];
+        const withoutCategory = category
+          ? t.markers.filter((m) => getMarker(m)?.category !== category)
+          : t.markers;
+        return { ...t, markers: [...withoutCategory, this.markerIconId] };
+      }),
+    );
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     if (!this.markerId) return state;
     const id = this.markerId;
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+    const restored = this.removedSameCategory;
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => ({
         ...t,
-        markers: t.markers.filter((m) => m !== id),
+        markers: [...t.markers.filter((m) => m !== id), ...restored],
       })),
-    }));
+    );
   }
 }
 

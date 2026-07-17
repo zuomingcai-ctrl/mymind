@@ -14,6 +14,7 @@ import type {
 } from '../model/types.js';
 import { buildMindmapCurvePoints, buildVerticalTreeEdgePoints } from './edge-paths.js';
 import { defaultRelationshipCubicControlPoints } from '../render/draw-edge.js';
+import { calloutBoundsFromOffset, topicCalloutAnchor } from '../render/callout-geometry.js';
 
 export const H_GAP = 60;
 export const V_GAP = 30;
@@ -125,16 +126,24 @@ function layoutCallouts(
     if (topic.callout) {
       const node = nodes.get(topic.id);
       if (node && !node.hidden) {
-        const w = Math.max(80, topic.callout.text.length * 8);
-        const h = 28;
-        const x = node.x + node.width / 2 + topic.callout.offset.x - w / 2;
-        const y = node.y + topic.callout.offset.y - h;
+        const bounds = calloutBoundsFromOffset(node, topic.callout.offset, topic.callout.text);
+        const anchor = topicCalloutAnchor(node);
         extraShapes.push({
           id: topic.callout.id,
           type: 'callout',
-          bounds: { x, y, width: w, height: h },
+          bounds,
           label: topic.callout.text,
-          style: { ...(topic.callout.style ?? {}) },
+          style: {
+            ...(topic.callout.style ?? {}),
+            topicId: topic.id,
+            showLeader: topic.callout.showLeader,
+            anchorX: anchor.x,
+            anchorY: anchor.y,
+            topicX: node.x,
+            topicY: node.y,
+            topicW: node.width,
+            topicH: node.height,
+          },
         });
       }
     }

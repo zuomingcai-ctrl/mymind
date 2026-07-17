@@ -1,6 +1,13 @@
-// covers: CV-001, CV-002
+// covers: CV-001, CV-002, CA-006
 import { describe, it, expect } from 'vitest';
-import { worldToScreen, screenToWorld, fitToContent, ensureRectVisible, clampZoom } from '../viewport.js';
+import {
+  worldToScreen,
+  screenToWorld,
+  fitToContent,
+  ensureRectVisible,
+  clampZoom,
+  hitTestCallout,
+} from '../viewport.js';
 
 describe('viewport', () => {
   it('worldToScreen and screenToWorld are inverse', () => {
@@ -10,6 +17,15 @@ describe('viewport', () => {
     const back = screenToWorld(screen, viewport);
     expect(back.x).toBeCloseTo(world.x);
     expect(back.y).toBeCloseTo(world.y);
+  });
+
+  it('hitTestCallout hits bubble bounds and ignores other shapes', () => {
+    const shapes = [
+      { id: 'b1', type: 'boundary', bounds: { x: 0, y: 0, width: 200, height: 100 } },
+      { id: 'c1', type: 'callout', bounds: { x: 40, y: 10, width: 80, height: 32 } },
+    ];
+    expect(hitTestCallout({ x: 50, y: 20 }, shapes)).toBe('c1');
+    expect(hitTestCallout({ x: 10, y: 10 }, shapes)).toBeNull();
   });
 
   it('clampZoom limits range 0.25-4', () => {

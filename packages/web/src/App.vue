@@ -11,6 +11,9 @@ import {
   DeleteSummaryCommand,
   DeleteBoundaryCommand,
   DeleteRelationshipCommand,
+  DeleteCalloutCommand,
+  UpdateCalloutCommand,
+  findTopicByCalloutId,
   UpdateRelationshipControlPointsCommand,
   UpdateRelationshipTitleCommand,
   relationshipLabelPoint,
@@ -56,6 +59,13 @@ import {
   countTopics,
   topicWordStats,
   UpdateDecorationCommand,
+  AddDecorationCommand,
+  DeleteDecorationCommand,
+  AddMarkerCommand,
+  DeleteMarkerCommand,
+  decorationOffsetBesideTopic,
+  decorationAtViewportCenter,
+  type DecorationAsset,
 } from '@mymind/core';
 import { useDocument } from './composables/useDocument';
 import { useViewport } from './composables/useViewport';
@@ -64,6 +74,8 @@ import CanvasView from './components/canvas/CanvasView.vue';
 import type { StructureSelectionKind } from './components/canvas/CanvasView.vue';
 import OutlinerView from './components/outliner/OutlinerView.vue';
 import PropertyPanel from './components/property-panel/PropertyPanel.vue';
+import MarkerLibraryPanel from './components/property-panel/MarkerLibraryPanel.vue';
+import MarkerEditPopover from './components/MarkerEditPopover.vue';
 import StatusBar from './components/StatusBar.vue';
 import TemplatePicker from './components/TemplatePicker.vue';
 import PrintPreview from './components/PrintPreview.vue';
@@ -131,6 +143,8 @@ const replaceFind = ref('');
 const replaceWith = ref('');
 const showOutliner = ref(true);
 const showPanel = ref(true);
+/** XMind-style right panel: properties (样式/画布/演说) vs library (标记/贴纸/插画) */
+const rightPanelMode = ref<'properties' | 'library'>('properties');
 const showMinimap = ref(true);
 const selectedDecorationId = ref<string | null>(null);
 const alignGuides = ref<Array<{ orientation: 'v' | 'h'; pos: number }>>([]);
@@ -231,6 +245,12 @@ const editingRelationship = ref<{
   width: number;
   height: number;
   title: string;
+} | null>(null);
+const editingMarker = ref<{
+  topicId: string;
+  markerId: string;
+  left: number;
+  top: number;
 } | null>(null);
 const keyboardCaptureRef = ref<HTMLInputElement | null>(null);
 const canvasEditorRef = ref<InstanceType<typeof TopicTextEditor> | null>(null);
@@ -457,6 +477,7 @@ function startEditingTopic(payload: {
   width: number;
   height: number;
 }) {
+  editingMarker.value = null;
   editingTopic.value = {
     topicId: payload.id,
     left: payload.left,
@@ -466,8 +487,45 @@ function startEditingTopic(payload: {
   };
 }
 
+function startEditingMarker(payload: {
+  topicId: string;
+  markerId: string;
+  left: number;
+  top: number;
+}) {
+  closeEditor();
+  editingRelationship.value = null;
+  editingMarker.value = payload;
+}
+
+function closeMarkerPopover() {
+  editingMarker.value = null;
+}
+
+function onSwitchMarker(markerId: string) {
+  if (!activeSheet.value || !editingMarker.value) return;
+  const { topicId, markerId: current } = editingMarker.value;
+  if (markerId !== current) {
+    dispatch(new AddMarkerCommand(activeSheet.value.id, topicId, markerId));
+  }
+  editingMarker.value = null;
+}
+
+function onRemoveMarker() {
+  if (!activeSheet.value || !editingMarker.value) return;
+  dispatch(
+    new DeleteMarkerCommand(
+      activeSheet.value.id,
+      editingMarker.value.topicId,
+      editingMarker.value.markerId,
+    ),
+  );
+  editingMarker.value = null;
+}
+
 function applyTopicSelect(id: string | null, mods: SelectionModifiers = {}) {
   closeEditor();
+  editingMarker.value = null;
   if (id && activeSheet.value) {
     const summary = activeSheet.value.summaries.find((s) => s.summaryTopicId === id);
     selectedStructure.value = summary ? { kind: 'summary', id: summary.id } : null;
@@ -797,6 +855,7 @@ function startEditingRelationship(payload: {
   title: string;
 }) {
   closeEditor();
+  editingMarker.value = null;
   editingRelationship.value = payload;
 }
 
@@ -835,12 +894,30 @@ function onUpdateRelationshipControl(payload: {
 
 async function onInsertAction(id: InsertActionId) {
   if (!activeSheet.value) return;
-  const result = await buildInsertAction(id, activeSheet.value, selection.value);
+  const result = await buildInsertAction(id, activeSheet.value, selection.value, (asset, topicId) => {
+    if (topicId) {
+      const layout = createDefaultLayoutRegistry().layout(activeSheet.value!, createMeasureFn());
+      const node = layout.nodes.get(topicId);
+      if (node && !node.hidden) {
+        const offset = decorationOffsetBesideTopic(node, asset, activeSheet.value!.decorations.length);
+        return { x: offset.x, y: offset.y, attachedTopicId: topicId };
+      }
+    }
+    const abs = decorationAtViewportCenter(
+      viewport.value,
+      { width: viewWidth.value, height: viewHeight.value },
+      asset,
+      activeSheet.value!.decorations.length,
+    );
+    return { x: abs.x, y: abs.y };
+  });
   if (!result) return;
   if (result.command) dispatch(result.command);
   recordRecentInsert(id);
   if (result.focusPanel) {
     panelFocus.value = result.focusPanel;
+    showPanel.value = true;
+    rightPanelMode.value = 'properties';
   }
 }
 
@@ -899,8 +976,22 @@ function onKeyDown(e: KeyboardEvent) {
       e.preventDefault();
       const sheetId = activeSheet.value.id;
 
+      if (selectedDecorationId.value) {
+        dispatch(new DeleteDecorationCommand(sheetId, selectedDecorationId.value));
+        selectedDecorationId.value = null;
+        return;
+      }
+
       if (selectedStructure.value) {
         const sel = selectedStructure.value;
+        if (sel.kind === 'callout') {
+          const topic = findTopicByCalloutId(activeSheet.value, sel.id);
+          if (topic) {
+            dispatch(new DeleteCalloutCommand(sheetId, topic.id));
+            selectedStructure.value = null;
+          }
+          return;
+        }
         const label =
           sel.kind === 'summary' ? '概要' : sel.kind === 'relationship' ? '关系线' : '外框';
         void ElMessageBox.confirm(`确定删除该${label}？`, '删除确认', {
@@ -1235,8 +1326,29 @@ function onShare() {
   ElMessage.success('已导出只读 JSON 副本');
 }
 
+/** XMind: smile button → marker/sticker/illustration library; click again to hide */
 function onOpenMarkers() {
+  if (showPanel.value && rightPanelMode.value === 'library') {
+    showPanel.value = false;
+    return;
+  }
   showPanel.value = true;
+  rightPanelMode.value = 'library';
+}
+
+/** XMind: panel button → style/canvas/pitch properties; click again to hide */
+function onOpenProperties() {
+  if (showPanel.value && rightPanelMode.value === 'properties') {
+    showPanel.value = false;
+    return;
+  }
+  showPanel.value = true;
+  rightPanelMode.value = 'properties';
+}
+
+/** View menu: fold/unfold right panel without changing mode */
+function onTogglePanel() {
+  showPanel.value = !showPanel.value;
 }
 
 function onExportZone(zoneId: string) {
@@ -1326,6 +1438,66 @@ function scaleSelectedDecoration(factor: number, rotationDelta = 0) {
   );
 }
 
+function onDeleteSelectedDecoration() {
+  if (!activeSheet.value || !selectedDecorationId.value) return;
+  dispatch(new DeleteDecorationCommand(activeSheet.value.id, selectedDecorationId.value));
+  selectedDecorationId.value = null;
+}
+
+function onAddDecoration(asset: DecorationAsset) {
+  if (!activeSheet.value) return;
+  const sheet = activeSheet.value;
+  const index = sheet.decorations.length;
+  let x: number;
+  let y: number;
+  let attachedTopicId: string | undefined;
+
+  if (selectedId.value) {
+    const layout = createDefaultLayoutRegistry().layout(sheet, createMeasureFn());
+    const node = layout.nodes.get(selectedId.value);
+    if (node && !node.hidden) {
+      const offset = decorationOffsetBesideTopic(node, asset, index);
+      x = offset.x;
+      y = offset.y;
+      attachedTopicId = selectedId.value;
+    } else {
+      const abs = decorationAtViewportCenter(
+        viewport.value,
+        { width: viewWidth.value, height: viewHeight.value },
+        asset,
+        index,
+      );
+      x = abs.x;
+      y = abs.y;
+    }
+  } else {
+    const abs = decorationAtViewportCenter(
+      viewport.value,
+      { width: viewWidth.value, height: viewHeight.value },
+      asset,
+      index,
+    );
+    x = abs.x;
+    y = abs.y;
+  }
+
+  dispatch(
+    new AddDecorationCommand(sheet.id, {
+      type: asset.type,
+      assetId: asset.id,
+      x,
+      y,
+      width: asset.defaultWidth,
+      height: asset.defaultHeight,
+      rotation: 0,
+      zIndex: index + 1,
+      attachedTopicId,
+    }),
+  );
+  const added = activeSheet.value?.decorations.at(-1);
+  selectedDecorationId.value = added?.id ?? null;
+}
+
 async function onSaveAsTemplate() {
   if (!mindDocument.value) return;
   try {
@@ -1404,6 +1576,19 @@ function onSelectDecoration(id: string | null) {
   if (id) selectedStructure.value = null;
 }
 
+function onUpdateDecoration(payload: {
+  id: string;
+  patch: { x?: number; y?: number; width?: number; height?: number; rotation?: number };
+}) {
+  if (!activeSheet.value) return;
+  dispatch(new UpdateDecorationCommand(activeSheet.value.id, payload.id, payload.patch));
+}
+
+function onUpdateCallout(payload: { topicId: string; offset: { x: number; y: number } }) {
+  if (!activeSheet.value) return;
+  dispatch(new UpdateCalloutCommand(activeSheet.value.id, payload.topicId, { offset: payload.offset }));
+}
+
 function onIncludeRelSearch(v: boolean) {
   includeRelationships.value = v;
   search();
@@ -1437,6 +1622,8 @@ onUnmounted(() => {
       :include-rel-search="includeRelationships"
       :show-outliner="showOutliner"
       :show-panel="showPanel"
+      :library-panel-active="showPanel && rightPanelMode === 'library'"
+      :properties-panel-active="showPanel && rightPanelMode === 'properties'"
       :show-minimap="showMinimap"
       :branch-focus-active="!!branchFocusId"
       :pitch-active="pitchActive"
@@ -1468,6 +1655,7 @@ onUnmounted(() => {
       @export-text-bundle="onExportTextBundle"
       @share="onShare"
       @open-markers="onOpenMarkers"
+      @open-properties="onOpenProperties"
       @insert-summary="onInsertSummary"
       @insert-boundary="onInsertBoundary"
       @insert-relationship="onInsertRelationship"
@@ -1482,7 +1670,7 @@ onUnmounted(() => {
       @save-as-template="onSaveAsTemplate"
       @print="showPrint = true"
       @toggle-outliner="showOutliner = !showOutliner"
-      @toggle-panel="showPanel = !showPanel"
+      @toggle-panel="onTogglePanel"
       @toggle-minimap="showMinimap = !showMinimap"
       @toggle-branch-focus="onToggleBranchFocus"
       @toggle-pitch="pitchActive ? exitPitch() : enterPitch()"
@@ -1546,15 +1734,19 @@ onUnmounted(() => {
           @move-topic="onTopicMove"
           @align-guides="onAlignGuides"
           @select-decoration="onSelectDecoration"
+          @update-decoration="onUpdateDecoration"
+          @update-callout="onUpdateCallout"
           @select-structure="onSelectStructure"
           @update-relationship-control="onUpdateRelationshipControl"
           @edit-relationship="startEditingRelationship"
+          @edit-marker="startEditingMarker"
           @request-keyboard-focus="focusKeyboardCapture"
         />
         <div v-if="selectedDecorationId && !zenActive" class="deco-toolbar">
           <el-button size="small" @click="scaleSelectedDecoration(1.1)">放大</el-button>
           <el-button size="small" @click="scaleSelectedDecoration(0.9)">缩小</el-button>
           <el-button size="small" @click="scaleSelectedDecoration(1, 15)">旋转</el-button>
+          <el-button size="small" type="danger" @click="onDeleteSelectedDecoration">删除</el-button>
         </div>
         <Minimap
           v-if="showMinimap && !zenActive"
@@ -1566,7 +1758,7 @@ onUnmounted(() => {
         />
       </div>
       <PropertyPanel
-        v-if="!zenActive && !pitchActive && showPanel"
+        v-if="!zenActive && !pitchActive && showPanel && rightPanelMode === 'properties'"
         :sheet="activeSheet"
         :selected-id="selectedId"
         :selected-structure="selectedStructure"
@@ -1574,6 +1766,12 @@ onUnmounted(() => {
         @focus-consumed="panelFocus = null"
         @start-pitch="enterPitch"
         @export-zone="onExportZone"
+      />
+      <MarkerLibraryPanel
+        v-else-if="!zenActive && !pitchActive && showPanel && rightPanelMode === 'library'"
+        :sheet="activeSheet"
+        :selected-id="selectedId"
+        @add-decoration="onAddDecoration"
       />
     </main>
     <el-empty v-else class="empty-workspace" description="尚未打开文档">
@@ -1653,6 +1851,16 @@ onUnmounted(() => {
       :height="editingTopic.height"
       :initial-text="editingTopic.initialText"
       @close="closeEditor"
+    />
+    <MarkerEditPopover
+      v-if="editingMarker && !zenActive && !pitchActive"
+      :topic-id="editingMarker.topicId"
+      :marker-id="editingMarker.markerId"
+      :left="editingMarker.left"
+      :top="editingMarker.top"
+      @switch="onSwitchMarker"
+      @remove="onRemoveMarker"
+      @close="closeMarkerPopover"
     />
     <input
       v-if="editingRelationship && !zenActive && !pitchActive"

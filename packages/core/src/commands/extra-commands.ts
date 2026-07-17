@@ -305,24 +305,22 @@ export class DeleteMarkerCommand implements Command {
   ) {}
 
   execute(state: MindMapDocument): MindMapDocument {
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => {
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => {
         this.had = t.markers.includes(this.markerId);
         return { ...t, markers: t.markers.filter((m) => m !== this.markerId) };
       }),
-    }));
+    );
   }
 
   undo(state: MindMapDocument): MindMapDocument {
     if (!this.had) return state;
-    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
-      ...sheet,
-      rootTopic: updateTopicInTree(sheet.rootTopic, this.topicId, (t) => ({
+    return updateSheetInDocument(state, this.sheetId, (sheet) =>
+      updateTopicInSheet(sheet, this.topicId, (t) => ({
         ...t,
         markers: [...t.markers, this.markerId],
       })),
-    }));
+    );
   }
 }
 

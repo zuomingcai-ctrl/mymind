@@ -18,9 +18,9 @@ export const DECORATION_ASSETS: DecorationAsset[] = [
   { id: 'pin', type: 'sticker', label: '图钉', glyph: '📌', defaultWidth: 40, defaultHeight: 40 },
   { id: 'rocket', type: 'sticker', label: '火箭', glyph: '🚀', defaultWidth: 48, defaultHeight: 48 },
   { id: 'trophy', type: 'sticker', label: '奖杯', glyph: '🏆', defaultWidth: 48, defaultHeight: 48 },
-  { id: 'sketch-1', type: 'illustration', label: '手绘框', glyph: '▭', defaultWidth: 120, defaultHeight: 90 },
-  { id: 'sketch-2', type: 'illustration', label: '云朵', glyph: '☁', defaultWidth: 140, defaultHeight: 80 },
-  { id: 'sketch-3', type: 'illustration', label: '箭头', glyph: '➔', defaultWidth: 100, defaultHeight: 40 },
+  { id: 'sketch-1', type: 'illustration', label: '手绘框', glyph: '🖼️', defaultWidth: 120, defaultHeight: 90 },
+  { id: 'sketch-2', type: 'illustration', label: '云朵', glyph: '☁️', defaultWidth: 140, defaultHeight: 80 },
+  { id: 'sketch-3', type: 'illustration', label: '箭头', glyph: '➡️', defaultWidth: 100, defaultHeight: 40 },
   { id: 'sketch-4', type: 'illustration', label: '气泡', glyph: '💬', defaultWidth: 110, defaultHeight: 70 },
   { id: 'sketch-5', type: 'illustration', label: '便签', glyph: '📝', defaultWidth: 100, defaultHeight: 100 },
 ];

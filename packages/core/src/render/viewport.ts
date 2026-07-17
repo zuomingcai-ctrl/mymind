@@ -223,6 +223,27 @@ export function hitTestBoundary(
   return null;
 }
 
+/** Hit-test callout bubbles; returns callout id or null. */
+export function hitTestCallout(
+  worldPoint: Point,
+  shapes: { id: string; type?: string; bounds: { x: number; y: number; width: number; height: number } }[],
+): string | null {
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const s = shapes[i]!;
+    if (s.type !== 'callout') continue;
+    const { x, y, width, height } = s.bounds;
+    if (
+      worldPoint.x >= x &&
+      worldPoint.x <= x + width &&
+      worldPoint.y >= y &&
+      worldPoint.y <= y + height
+    ) {
+      return s.id;
+    }
+  }
+  return null;
+}
+
 /**
  * Hit-test XMind-style cubic control handles.
  * @returns 0 = near-from handle, 1 = near-to handle, null = miss

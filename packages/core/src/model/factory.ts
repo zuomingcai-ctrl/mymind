@@ -96,6 +96,25 @@ export function findTopicInSheet(sheet: Sheet, id: string): Topic | null {
   return null;
 }
 
+/** Find the topic that owns a callout by callout id. */
+export function findTopicByCalloutId(sheet: Sheet, calloutId: string): Topic | null {
+  const walk = (topic: Topic): Topic | null => {
+    if (topic.callout?.id === calloutId) return topic;
+    for (const child of topic.children) {
+      const found = walk(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  const inTree = walk(sheet.rootTopic);
+  if (inTree) return inTree;
+  for (const floating of sheet.floatingTopics) {
+    const found = walk(floating);
+    if (found) return found;
+  }
+  return null;
+}
+
 export function findTopicInDocument(
   doc: MindMapDocument,
   topicId: string,

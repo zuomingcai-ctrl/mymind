@@ -50,17 +50,55 @@ export {
 export { countTopics, charCount, topicWordStats } from './utils/topic-stats.js';
 export { nextTextTransform, applyTextTransform, type TextTransformMode } from './utils/text-transform.js';
 export { todoProgressMarkerId, syncProgressMarkers, PROGRESS_MARKERS } from './utils/todo-markers.js';
-export { listMarkers, getMarker, markerGlyph, MARKER_PRESETS, type MarkerPreset } from './markers/presets.js';
+export {
+  listMarkers,
+  getMarker,
+  markerGlyph,
+  MARKER_PRESETS,
+  layoutMarkerHits,
+  markerOriginForNode,
+  type MarkerPreset,
+  type MarkerHitRect,
+} from './markers/presets.js';
+export {
+  layoutTopicContent,
+  listTopicAccessories,
+  layoutInnerMarkerHits,
+  PRIORITY_COLORS,
+  accessoryGlyph,
+  estimateLabelChipWidth,
+  TOPIC_PAD_X,
+  MARKER_SIZE,
+  ACCESSORY_SIZE,
+  LABEL_CHIP_H,
+  LABEL_CHIP_GAP,
+  LABEL_CHIP_PAD_X,
+  type TopicAccessoryKind,
+  type TopicContentLayout,
+} from './render/topic-adornments.js';
 export {
   listDecorationAssets,
   getDecorationAsset,
   DECORATION_ASSETS,
   type DecorationAsset,
 } from './decorations/assets.js';
+export {
+  resolveDecorationWorldRect,
+  decorationOffsetBesideTopic,
+  decorationAtViewportCenter,
+  type DecorationWorldRect,
+} from './decorations/placement.js';
 export { TextMeasurer, createMeasureFn } from './layout/measure.js';
 export { LayoutRegistry, createDefaultLayoutRegistry } from './layout/registry.js';
 export { buildFrame } from './render/pipeline.js';
 export { strokeEdge, traceEdgePath, autoCubicControlPoints, defaultRelationshipControlPoint, defaultRelationshipCubicControlPoints, drawRelationshipHandles, drawRelationshipArrows, relationshipLabelPoint, type DrawEdgeOptions } from './render/draw-edge.js';
+export {
+  calloutBoundsFromOffset,
+  calloutTipSide,
+  measureCalloutSize,
+  topicCalloutAnchor,
+  type CalloutTipSide,
+} from './render/callout-geometry.js';
 export {
   buildBracePath,
   drawExtraShape,
@@ -76,6 +114,7 @@ export {
   hitTestRelationship,
   hitTestSummary,
   hitTestBoundary,
+  hitTestCallout,
   hitTestRelationshipControlPoint,
   hitTestRelationshipControlHandle,
   clampZoom,

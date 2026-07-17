@@ -1,6 +1,15 @@
 import type { Topic, Size } from '../model/types.js';
 import { runsToPlain, measureRunsWidth } from '../model/inline-run.js';
 import { equationExtraHeight } from '../render/equation.js';
+import {
+  estimateAccessoriesWidth,
+  estimateLabelsRowWidth,
+  estimateMarkersWidth,
+  listTopicAccessories,
+  LABEL_ROW_H,
+  TITLE_ACCESSORY_GAP,
+  TOPIC_PAD_X,
+} from '../render/topic-adornments.js';
 
 const H_PADDING = 24;
 const V_PADDING = 12;
@@ -38,13 +47,24 @@ export class TextMeasurer {
     let totalHeight = textHeight;
     let totalWidth = Math.max(textWidth, MIN_WIDTH);
 
+    const markersW = estimateMarkersWidth(topic.markers.length);
+    const accessoriesW = estimateAccessoriesWidth(listTopicAccessories(topic));
+    const sideExtra =
+      (markersW ? markersW + TITLE_ACCESSORY_GAP : 0) +
+      (accessoriesW ? accessoriesW + TITLE_ACCESSORY_GAP : 0);
+    totalWidth += sideExtra;
+
     if (topic.image) {
       totalWidth = Math.max(totalWidth, topic.image.width + H_PADDING);
       totalHeight += topic.image.height;
     }
 
     if (topic.labels.length > 0) {
-      totalHeight += 18;
+      totalHeight += LABEL_ROW_H;
+      totalWidth = Math.max(
+        totalWidth,
+        estimateLabelsRowWidth(topic.labels) + TOPIC_PAD_X * 2,
+      );
     }
 
     if (topic.todos && topic.todos.length > 0) {

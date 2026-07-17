@@ -54,3 +54,54 @@ export function getMarker(id: string): MarkerPreset | undefined {
 export function markerGlyph(id: string): string {
   return getMarker(id)?.glyph ?? id;
 }
+
+export interface MarkerHitRect {
+  markerId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+const MARKER_GAP = 3;
+const MARKER_HEIGHT = 16;
+const TOPIC_PAD_X = 8;
+
+/** World-space hit boxes for markers (left of title inside the topic). */
+export function layoutMarkerHits(
+  markers: string[],
+  originX: number,
+  originY: number,
+  measureGlyph: (glyph: string) => number = defaultGlyphWidth,
+): MarkerHitRect[] {
+  let ox = originX;
+  return markers.map((markerId) => {
+    const isPriority = markerId.startsWith('priority-');
+    const glyph = markerGlyph(markerId);
+    const width = isPriority ? MARKER_HEIGHT : Math.max(MARKER_HEIGHT, measureGlyph(glyph));
+    const hit: MarkerHitRect = { markerId, x: ox, y: originY, width, height: MARKER_HEIGHT };
+    ox += width + MARKER_GAP;
+    return hit;
+  });
+}
+
+function defaultGlyphWidth(glyph: string): number {
+  return Math.max(14, [...glyph].length * 12);
+}
+
+/** Origin of the first marker inside the topic (title-band left). */
+export function markerOriginForNode(node: {
+  x: number;
+  y: number;
+  width: number;
+  height?: number;
+}): {
+  x: number;
+  y: number;
+} {
+  const bandH = node.height ?? 28;
+  return {
+    x: node.x + TOPIC_PAD_X,
+    y: node.y + Math.max(0, (bandH - MARKER_HEIGHT) / 2),
+  };
+}

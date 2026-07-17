@@ -11,6 +11,7 @@ import {
   UpdateImageCommand,
   UpdateEquationCommand,
   AddZoneCommand,
+  listDecorationAssets,
   type Sheet,
   type Command,
 } from '@mymind/core';
@@ -21,6 +22,17 @@ export interface InsertActionResult {
   /** Focus property panel field after insert */
   focusPanel?: 'note' | 'comment' | 'todo' | 'task' | 'equation' | 'hyperlink';
 }
+
+export interface DecorationPlacement {
+  x: number;
+  y: number;
+  attachedTopicId?: string;
+}
+
+export type DecorationPlacementFn = (
+  size: { defaultWidth: number; defaultHeight: number },
+  topicId: string | undefined,
+) => DecorationPlacement;
 
 function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
@@ -49,6 +61,7 @@ export async function buildInsertAction(
   id: InsertActionId,
   sheet: Sheet,
   selection: string[],
+  placeDecoration?: DecorationPlacementFn,
 ): Promise<InsertActionResult | null> {
   const topicId = selection[0];
   const sheetId = sheet.id;
@@ -173,36 +186,44 @@ export async function buildInsertAction(
       };
     }
     case 'sticker': {
-      const assets = (await import('@mymind/core')).listDecorationAssets('sticker');
-      const asset = assets[0]!;
+      const asset = listDecorationAssets('sticker')[0]!;
+      const place = placeDecoration?.(asset, topicId) ?? {
+        x: 40,
+        y: 40,
+        attachedTopicId: topicId,
+      };
       return {
         command: new AddDecorationCommand(sheetId, {
           type: 'sticker',
           assetId: asset.id,
-          x: 40,
-          y: 40,
+          x: place.x,
+          y: place.y,
           width: asset.defaultWidth,
           height: asset.defaultHeight,
           rotation: 0,
           zIndex: sheet.decorations.length + 1,
-          attachedTopicId: topicId,
+          attachedTopicId: place.attachedTopicId,
         }),
       };
     }
     case 'illustration': {
-      const assets = (await import('@mymind/core')).listDecorationAssets('illustration');
-      const asset = assets[0]!;
+      const asset = listDecorationAssets('illustration')[0]!;
+      const place = placeDecoration?.(asset, topicId) ?? {
+        x: 80,
+        y: 80,
+        attachedTopicId: topicId,
+      };
       return {
         command: new AddDecorationCommand(sheetId, {
           type: 'illustration',
           assetId: asset.id,
-          x: 80,
-          y: 80,
+          x: place.x,
+          y: place.y,
           width: asset.defaultWidth,
           height: asset.defaultHeight,
           rotation: 0,
           zIndex: sheet.decorations.length + 1,
-          attachedTopicId: topicId,
+          attachedTopicId: place.attachedTopicId,
         }),
       };
     }

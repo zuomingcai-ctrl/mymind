@@ -23,7 +23,6 @@ import {
   Picture,
   Files,
   Share,
-  CollectionTag,
 } from '@element-plus/icons-vue';
 import InsertMenu from './InsertMenu.vue';
 import type { InsertActionId } from '../insert/insert-items';
@@ -40,6 +39,10 @@ const props = defineProps<{
   includeRelSearch: boolean;
   showOutliner: boolean;
   showPanel: boolean;
+  /** right panel showing marker/sticker/illustration library (TB-005) */
+  libraryPanelActive?: boolean;
+  /** right panel showing style/canvas/pitch properties (TB-006) */
+  propertiesPanelActive?: boolean;
   showMinimap: boolean;
   branchFocusActive: boolean;
   pitchActive: boolean;
@@ -74,6 +77,7 @@ const emit = defineEmits<{
   'export-text-bundle': [];
   share: [];
   'open-markers': [];
+  'open-properties': [];
   'insert-summary': [];
   'insert-boundary': [];
   'insert-relationship': [];
@@ -280,7 +284,6 @@ function setSearchRef(el: unknown) {
 
       <el-button :icon="Printer" :aria-label="t('toolbar.print')" @click="emit('print')">{{ t('toolbar.print') }}</el-button>
       <el-button :icon="Share" :disabled="!hasDocument" @click="emit('share')">{{ t('toolbar.share') }}</el-button>
-      <el-button :icon="CollectionTag" :disabled="!selectedId" @click="emit('open-markers')">{{ t('toolbar.markersStickers') }}</el-button>
     </div>
 
     <div class="toolbar-right">
@@ -301,6 +304,50 @@ function setSearchRef(el: unknown) {
         @input="emit('search')"
       />
       <el-button @click="emit('replace')">{{ t('toolbar.replace') }}</el-button>
+
+      <!-- XMind-style right panel switcher: library ↔ properties -->
+      <div class="panel-switcher" role="group" :aria-label="t('toolbar.panelSwitcher')">
+        <button
+          type="button"
+          class="panel-switch-btn"
+          :class="{ active: libraryPanelActive }"
+          :disabled="!hasDocument"
+          :title="t('toolbar.markersStickers')"
+          :aria-label="t('toolbar.markersStickers')"
+          :aria-pressed="libraryPanelActive"
+          data-testid="panel-switch-library"
+          @click="emit('open-markers')"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <circle cx="9" cy="10" r="1.2" fill="currentColor" />
+            <circle cx="15" cy="10" r="1.2" fill="currentColor" />
+            <path
+              d="M8.5 14.5c1.2 1.4 2.6 2.1 3.5 2.1s2.3-.7 3.5-2.1"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.6"
+              stroke-linecap="round"
+            />
+          </svg>
+        </button>
+        <button
+          type="button"
+          class="panel-switch-btn"
+          :class="{ active: propertiesPanelActive }"
+          :disabled="!hasDocument"
+          :title="t('toolbar.propertiesPanel')"
+          :aria-label="t('toolbar.propertiesPanel')"
+          :aria-pressed="propertiesPanelActive"
+          data-testid="panel-switch-properties"
+          @click="emit('open-properties')"
+        >
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <rect x="3.5" y="4.5" width="17" height="15" rx="2" fill="none" stroke="currentColor" stroke-width="1.6" />
+            <path d="M15.5 4.5v15" fill="none" stroke="currentColor" stroke-width="1.6" />
+          </svg>
+        </button>
+      </div>
     </div>
   </header>
 </template>
@@ -332,5 +379,41 @@ function setSearchRef(el: unknown) {
 }
 .search-input {
   width: 180px;
+}
+.panel-switcher {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--el-fill-color-light);
+}
+.panel-switch-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--el-text-color-regular);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.panel-switch-btn:hover:not(:disabled) {
+  color: var(--el-text-color-primary);
+  background: var(--el-fill-color);
+}
+.panel-switch-btn.active {
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color);
+  box-shadow: 0 0 0 1px var(--el-border-color-lighter);
+}
+.panel-switch-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 </style>

@@ -1,4 +1,10 @@
 import type { ExtraShape, Rect } from '../model/types.js';
+import {
+  calloutBodyRect,
+  calloutTipPoints,
+  calloutTipSide,
+  nearestPointOnRect,
+} from './callout-geometry.js';
 
 /** Curly brace path opening toward `openSide`. */
 export function buildBracePath(bounds: Rect, openSide: 'left' | 'right'): string {
@@ -49,6 +55,50 @@ export function extraShapeSvgElement(shape: ExtraShape): string {
   if (shape.type === 'matrix-cell' || shape.type === 'timeline-axis') {
     const { x, y, width, height } = shape.bounds;
     return `<rect x="${x}" y="${y}" width="${width}" height="${height}" fill="none" stroke="${stroke}" stroke-width="1"/>`;
+  }
+
+  if (shape.type === 'callout') {
+    const bg =
+      (shape.style.fill as string | undefined) ??
+      (shape.style.backgroundColor as string | undefined) ??
+      '#2D2D2D';
+    const border =
+      (shape.style.borderColor as string | undefined) ??
+      (stroke === '#888888' ? bg : stroke);
+    const anchor = {
+      x: (shape.style.anchorX as number | undefined) ?? shape.bounds.x + shape.bounds.width / 2,
+      y: (shape.style.anchorY as number | undefined) ?? shape.bounds.y + shape.bounds.height + 20,
+    };
+    const side = calloutTipSide(shape.bounds, anchor);
+    const body = calloutBodyRect(shape.bounds, side);
+    const tip = calloutTipPoints(body, side);
+    const showLeader = shape.style.showLeader !== false;
+    let el = '';
+    if (
+      showLeader &&
+      typeof shape.style.topicX === 'number' &&
+      typeof shape.style.topicY === 'number' &&
+      typeof shape.style.topicW === 'number' &&
+      typeof shape.style.topicH === 'number'
+    ) {
+      const target = nearestPointOnRect(tip.apex, {
+        x: shape.style.topicX as number,
+        y: shape.style.topicY as number,
+        width: shape.style.topicW as number,
+        height: shape.style.topicH as number,
+      });
+      el += `<line x1="${tip.apex.x}" y1="${tip.apex.y}" x2="${target.x}" y2="${target.y}" stroke="${border}" stroke-width="1.25"/>`;
+    }
+    el += `<rect x="${body.x}" y="${body.y}" width="${body.width}" height="${body.height}" fill="${bg}" stroke="${border}" stroke-width="1" rx="6"/>`;
+    el += `<path d="M ${tip.baseA.x} ${tip.baseA.y} L ${tip.baseB.x} ${tip.baseB.y} L ${tip.apex.x} ${tip.apex.y} Z" fill="${bg}" stroke="none"/>`;
+    if (shape.label) {
+      const isDark =
+        bg === '#2D2D2D' || bg.startsWith('#2') || bg.startsWith('#1') || bg.startsWith('#0');
+      const fillText = isDark ? '#FFFFFF' : '#333333';
+      const fontSize = (shape.style.fontSize as number | undefined) ?? 12;
+      el += `<text x="${body.x + body.width / 2}" y="${body.y + body.height / 2}" fill="${fillText}" font-size="${fontSize}" text-anchor="middle" dominant-baseline="middle">${shape.label}</text>`;
+    }
+    return el;
   }
 
   const { x, y, width, height } = shape.bounds;
@@ -116,12 +166,71 @@ export function drawExtraShape(
     ctx.fill();
     ctx.stroke();
   } else if (shape.type === 'callout') {
-    ctx.fillStyle = fill ?? '#FFF9E6';
-    ctx.strokeStyle = stroke;
+    const bg =
+      fill ??
+      (shape.style.backgroundColor as string | undefined) ??
+      '#2D2D2D';
+    const border =
+      (shape.style.borderColor as string | undefined) ??
+      (stroke === '#888888' ? bg : stroke);
+    const anchor = {
+      x: (shape.style.anchorX as number | undefined) ?? x + width / 2,
+      y: (shape.style.anchorY as number | undefined) ?? y + height + 20,
+    };
+    const side = calloutTipSide(shape.bounds, anchor);
+    const body = calloutBodyRect(shape.bounds, side);
+    const tip = calloutTipPoints(body, side);
+    const showLeader = shape.style.showLeader !== false;
+    const topicRect =
+      typeof shape.style.topicX === 'number' &&
+      typeof shape.style.topicY === 'number' &&
+      typeof shape.style.topicW === 'number' &&
+      typeof shape.style.topicH === 'number'
+        ? {
+            x: shape.style.topicX as number,
+            y: shape.style.topicY as number,
+            width: shape.style.topicW as number,
+            height: shape.style.topicH as number,
+          }
+        : null;
+
+    if (showLeader && topicRect) {
+      const target = nearestPointOnRect(tip.apex, topicRect);
+      const dist = Math.hypot(target.x - tip.apex.x, target.y - tip.apex.y);
+      if (dist > 4) {
+        ctx.strokeStyle = border;
+        ctx.lineWidth = 1.25;
+        ctx.beginPath();
+        ctx.moveTo(tip.apex.x, tip.apex.y);
+        ctx.lineTo(target.x, target.y);
+        ctx.stroke();
+      }
+    }
+
+    const r = 6;
+    ctx.fillStyle = bg;
+    ctx.strokeStyle = border;
     ctx.lineWidth = 1;
-    helpers.roundRect(ctx, x, y, width, height, 6);
+    helpers.roundRect(ctx, body.x, body.y, body.width, body.height, r);
     ctx.fill();
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(tip.baseA.x, tip.baseA.y);
+    ctx.lineTo(tip.baseB.x, tip.baseB.y);
+    ctx.lineTo(tip.apex.x, tip.apex.y);
+    ctx.closePath();
+    ctx.fill();
+    if (shape.label) {
+      const isDark =
+        bg === '#2D2D2D' || bg.startsWith('#2') || bg.startsWith('#1') || bg.startsWith('#0');
+      ctx.fillStyle = isDark ? '#FFFFFF' : '#333333';
+      ctx.font = `${(shape.style.fontSize as number | undefined) ?? 12}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(shape.label, body.x + body.width / 2, body.y + body.height / 2);
+    }
+    ctx.restore();
+    return;
   } else {
     ctx.fillStyle = fill ?? 'transparent';
     ctx.strokeStyle = stroke;

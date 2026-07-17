@@ -16,11 +16,11 @@ export class AddCalloutCommand implements Command {
     const callout: Callout = {
       id: generateId(),
       text: this.text,
-      offset: { x: 40, y: -40 },
+      offset: { x: 0, y: -36 },
       showLeader: true,
       style: {
-        backgroundColor: '#FFF9E6',
-        borderColor: '#E6C35C',
+        backgroundColor: '#2D2D2D',
+        borderColor: '#2D2D2D',
         fontSize: 12,
       },
     };

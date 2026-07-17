@@ -8,6 +8,7 @@ import {
   hitTestRelationship,
   hitTestSummary,
   hitTestBoundary,
+  hitTestCallout,
   hitTestRelationshipControlHandle,
   getTheme,
   strokeEdge,
@@ -16,18 +17,38 @@ import {
   drawRelationshipArrows,
   relationshipLabelPoint,
   markerGlyph,
-  todoCompletionRate,
+  layoutMarkerHits,
+  layoutTopicContent,
+  listTopicAccessories,
+  accessoryGlyph,
+  PRIORITY_COLORS,
+  MARKER_SIZE,
+  ACCESSORY_SIZE,
+  LABEL_CHIP_H,
+  LABEL_CHIP_GAP,
+  estimateLabelChipWidth,
   findTopicInSheet,
+  findTopicByCalloutId,
+  calloutBoundsFromOffset,
+  topicCalloutAnchor,
+  todoCompletionRate,
+  getDecorationAsset,
+  resolveDecorationWorldRect,
   type Viewport,
   type Sheet,
   type TopicStyle,
   type EdgeStyle,
   type TodoItem,
+  type MarkerHitRect,
+  type Label,
+  type Topic,
+  type ExtraShape,
+  type LayoutResult,
 } from '@mymind/core';
 import { useCanvasPan } from '../../composables/useCanvasPan';
 import { computeSnap } from '../../utils/align-snap';
 
-export type StructureSelectionKind = 'summary' | 'relationship' | 'boundary';
+export type StructureSelectionKind = 'summary' | 'relationship' | 'boundary' | 'callout';
 
 const props = defineProps<{
   sheet: Sheet | null;
@@ -56,7 +77,14 @@ const emit = defineEmits<{
   'move-topic': [payload: { topicId: string; newParentId: string; newIndex: number }];
   'align-guides': [guides: Array<{ orientation: 'v' | 'h'; pos: number }>];
   'select-decoration': [id: string | null];
+  'update-decoration': [
+    payload: {
+      id: string;
+      patch: { x?: number; y?: number; width?: number; height?: number; rotation?: number };
+    },
+  ];
   'select-structure': [payload: { kind: StructureSelectionKind; id: string } | null];
+  'update-callout': [payload: { topicId: string; offset: { x: number; y: number } }];
   'update-relationship-control': [
     payload: { relationshipId: string; controlPoints: Array<{ x: number; y: number }> },
   ];
@@ -70,16 +98,59 @@ const emit = defineEmits<{
       title: string;
     },
   ];
+  'edit-marker': [
+    payload: {
+      topicId: string;
+      markerId: string;
+      left: number;
+      top: number;
+    },
+  ];
   'request-keyboard-focus': [];
 }>();
 
 const selectedSet = computed(() => new Set(props.selectedIds));
 
+type DecorationDragMode = 'move' | 'resize' | 'rotate';
+const decoDrag = ref<{
+  id: string;
+  mode: DecorationDragMode;
+  startClientX: number;
+  startClientY: number;
+  origin: { x: number; y: number; width: number; height: number; rotation: number };
+  center?: { x: number; y: number };
+  moved: boolean;
+} | null>(null);
+const decoLivePatch = ref<{
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  rotation?: number;
+} | null>(null);
+
+const calloutDrag = ref<{
+  calloutId: string;
+  topicId: string;
+  text: string;
+  startClientX: number;
+  startClientY: number;
+  baseOffset: { x: number; y: number };
+  moved: boolean;
+} | null>(null);
+const calloutLiveOffset = ref<{ x: number; y: number } | null>(null);
+
 const { panCursor, isPanning, onPointerDown, shouldSuppressClick } = useCanvasPan((dx, dy) =>
   emit('pan', dx, dy),
 );
 
-const canvasCursor = computed(() => panCursor.value);
+const canvasCursor = computed(() => {
+  if (decoDrag.value?.mode === 'resize') return 'nwse-resize';
+  if (decoDrag.value?.mode === 'rotate') return 'grabbing';
+  if (decoDrag.value?.mode === 'move') return 'move';
+  if (calloutDrag.value) return 'move';
+  return panCursor.value;
+});
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const registry = createDefaultLayoutRegistry();
@@ -93,10 +164,90 @@ function resolveLineType(sheet: Sheet): EdgeStyle['lineType'] {
   return getTheme(sheet.canvasSettings.themeId).edge.lineType;
 }
 
+function drawDecorations(
+  ctx: CanvasRenderingContext2D,
+  sheet: Sheet,
+  nodes: Map<string, { id: string; x: number; y: number; width: number; height: number; hidden?: boolean }>,
+) {
+  const handle = 8 / Math.max(props.viewport.zoom, 0.01);
+  const rotateStem = 14 / Math.max(props.viewport.zoom, 0.01);
+  for (const raw of sheet.decorations) {
+    const dec = decorationWithLivePatch(raw);
+    const rect = resolveDecorationWorldRect(dec, nodes);
+    const asset = getDecorationAsset(dec.assetId);
+    const glyph = asset?.glyph ?? '◆';
+    const hw = rect.width / 2;
+    const hh = rect.height / 2;
+
+    ctx.save();
+    ctx.translate(rect.x + hw, rect.y + hh);
+    ctx.rotate((dec.rotation * Math.PI) / 180);
+
+    if (dec.type === 'illustration') {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.strokeStyle = '#D0D5DD';
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, -hw, -hh, rect.width, rect.height, 10);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    ctx.fillStyle = '#333333';
+    ctx.font = `${Math.min(rect.width, rect.height) * 0.55}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(glyph, 0, 0);
+
+    // Selection chrome in local (rotated) space so the box follows the decoration
+    if (props.selectedDecorationId === dec.id) {
+      ctx.strokeStyle = '#4A90D9';
+      ctx.lineWidth = 2 / Math.max(props.viewport.zoom, 0.01);
+      ctx.setLineDash([]);
+      ctx.strokeRect(-hw, -hh, rect.width, rect.height);
+      ctx.fillStyle = '#4A90D9';
+      ctx.fillRect(hw - handle / 2, hh - handle / 2, handle, handle);
+      ctx.beginPath();
+      ctx.moveTo(0, -hh);
+      ctx.lineTo(0, -hh - rotateStem);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(0, -hh - rotateStem, handle * 0.55, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function decorationWithLivePatch<T extends { id: string }>(dec: T): T & {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation: number;
+} {
+  const live = decoLivePatch.value;
+  if (live && decoDrag.value?.id === dec.id) {
+    return { ...dec, ...live } as T & {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      rotation: number;
+    };
+  }
+  return dec as T & {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotation: number;
+  };
+}
+
 function drawTopicNode(
   ctx: CanvasRenderingContext2D,
   node: { x: number; y: number; width: number; height: number; depth: number; display?: 'box' | 'underline' },
-  topic: { title: string; markers?: string[]; style?: TopicStyle; todos?: TodoItem[] },
+  topic: Topic,
   style: TopicStyle,
   fontFamily: string,
   selected: boolean,
@@ -114,8 +265,7 @@ function drawTopicNode(
     displayTitle = displayTitle.replace(/\b\w/g, (c) => c.toUpperCase());
   }
 
-  const hasTodos = (topic.todos?.length ?? 0) > 0;
-  const titleOffsetY = hasTodos ? -6 : 0;
+  const content = layoutTopicContent(node, topic);
 
   if (merged.shape === 'none' || node.display === 'underline') {
     const lineY = node.y + node.height - 1;
@@ -125,9 +275,7 @@ function drawTopicNode(
     ctx.moveTo(node.x, lineY);
     ctx.lineTo(node.x + node.width, lineY);
     ctx.stroke();
-    fillTopicText(ctx, displayTitle, node, merged, ff, 'left', titleOffsetY);
-    drawTodoRate(ctx, topic.todos, node);
-    drawMarkers(ctx, topic.markers ?? [], node.x + node.width + 4, node.y + 4);
+    drawTopicAdornments(ctx, node, topic, displayTitle, merged, ff, content, 'left');
     if (selected) {
       ctx.strokeStyle = '#4A90D9';
       ctx.lineWidth = 2;
@@ -171,19 +319,131 @@ function drawTopicNode(
     ctx.stroke();
   }
 
-  fillTopicText(ctx, displayTitle, node, merged, ff, merged.textAlign ?? 'center', titleOffsetY);
-  drawTodoRate(ctx, topic.todos, node);
-  drawMarkers(ctx, topic.markers ?? [], node.x + node.width + 4, node.y + 4);
+  drawTopicAdornments(
+    ctx,
+    node,
+    topic,
+    displayTitle,
+    merged,
+    ff,
+    content,
+    merged.textAlign ?? 'center',
+  );
 }
 
-function fillTopicText(
+function drawTopicAdornments(
+  ctx: CanvasRenderingContext2D,
+  node: { x: number; y: number; width: number; height: number },
+  topic: Topic,
+  displayTitle: string,
+  style: TopicStyle,
+  fontFamily: string,
+  content: ReturnType<typeof layoutTopicContent>,
+  align: 'left' | 'center' | 'right',
+) {
+  drawInnerMarkers(ctx, topic.markers ?? [], content.markersOrigin);
+  fillTopicTextInBand(ctx, displayTitle, node, style, fontFamily, align, content);
+  drawAccessoryIcons(ctx, listTopicAccessories(topic), content.accessoriesOrigin);
+  drawLabelChips(ctx, topic.labels ?? [], content.labelsOrigin);
+  drawTodoRate(ctx, topic.todos, node);
+}
+
+function drawInnerMarkers(
+  ctx: CanvasRenderingContext2D,
+  markers: string[],
+  origin: { x: number; y: number },
+) {
+  if (!markers.length) return;
+  let ox = origin.x;
+  for (const id of markers) {
+    const color = PRIORITY_COLORS[id];
+    if (color) {
+      const num = id.replace('priority-', '');
+      ctx.beginPath();
+      ctx.fillStyle = color;
+      ctx.arc(ox + MARKER_SIZE / 2, origin.y + MARKER_SIZE / 2, MARKER_SIZE / 2 - 0.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 10px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(num, ox + MARKER_SIZE / 2, origin.y + MARKER_SIZE / 2 + 0.5);
+      ox += MARKER_SIZE + 3;
+    } else {
+      ctx.font = '13px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#333';
+      const glyph = markerGlyph(id);
+      ctx.fillText(glyph, ox, origin.y + MARKER_SIZE / 2);
+      ox += Math.max(MARKER_SIZE, ctx.measureText(glyph).width) + 3;
+    }
+  }
+}
+
+function drawAccessoryIcons(
+  ctx: CanvasRenderingContext2D,
+  kinds: ReturnType<typeof listTopicAccessories>,
+  origin: { x: number; y: number },
+) {
+  if (!kinds.length) return;
+  let ox = origin.x;
+  for (const kind of kinds) {
+    if (kind === 'note') {
+      // XMind-style note pill: light circle with "⋯"
+      ctx.beginPath();
+      ctx.fillStyle = '#E8E8E8';
+      ctx.arc(ox + ACCESSORY_SIZE / 2, origin.y + ACCESSORY_SIZE / 2, ACCESSORY_SIZE / 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#666666';
+      ctx.font = 'bold 11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('···', ox + ACCESSORY_SIZE / 2, origin.y + ACCESSORY_SIZE / 2);
+    } else {
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#666';
+      ctx.fillText(accessoryGlyph(kind), ox + ACCESSORY_SIZE / 2, origin.y + ACCESSORY_SIZE / 2);
+    }
+    ox += ACCESSORY_SIZE + 3;
+  }
+}
+
+function drawLabelChips(
+  ctx: CanvasRenderingContext2D,
+  labels: Label[],
+  origin: { x: number; y: number },
+) {
+  if (!labels.length) return;
+  let ox = origin.x;
+  ctx.font = '11px sans-serif';
+  ctx.textBaseline = 'middle';
+  for (const label of labels) {
+    const w = estimateLabelChipWidth(label.text);
+    const h = LABEL_CHIP_H;
+    ctx.fillStyle = '#F5F5F5';
+    ctx.strokeStyle = label.color || '#CCCCCC';
+    ctx.lineWidth = 1;
+    roundRect(ctx, ox, origin.y, w, h, h / 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#555555';
+    ctx.textAlign = 'center';
+    ctx.fillText(label.text, ox + w / 2, origin.y + h / 2);
+    ox += w + LABEL_CHIP_GAP;
+  }
+}
+
+function fillTopicTextInBand(
   ctx: CanvasRenderingContext2D,
   title: string,
   node: { x: number; y: number; width: number; height: number },
   style: TopicStyle,
   fontFamily: string,
   align: 'left' | 'center' | 'right',
-  offsetY = 0,
+  content: ReturnType<typeof layoutTopicContent>,
 ) {
   const weight =
     style.fontWeight === 'bold'
@@ -198,23 +458,26 @@ function fillTopicText(
   ctx.font = `${italic}${weight} ${style.fontSize ?? 14}px ${fontFamily}`;
   ctx.textAlign = align;
   ctx.textBaseline = 'middle';
+
+  const left = content.titleX;
+  const right = content.accessoriesWidth
+    ? content.accessoriesOrigin.x - 4
+    : node.x + node.width - 8;
+  const midY = node.y + content.titleBandHeight / 2;
   const x =
-    align === 'left' ? node.x + 8 : align === 'right' ? node.x + node.width - 8 : node.x + node.width / 2;
-  const midY = node.y + node.height / 2 + offsetY;
+    align === 'left' ? left : align === 'right' ? right : (left + right) / 2;
   ctx.fillText(title, x, midY);
   if (style.textDecoration === 'underline' || style.textDecoration === 'line-through') {
     const metrics = ctx.measureText(title);
     const tw = metrics.width;
-    const left = align === 'left' ? x : align === 'right' ? x - tw : x - tw / 2;
+    const textLeft = align === 'left' ? x : align === 'right' ? x - tw : x - tw / 2;
     const y =
-      style.textDecoration === 'line-through'
-        ? midY
-        : midY + (style.fontSize ?? 14) / 2;
+      style.textDecoration === 'line-through' ? midY : midY + (style.fontSize ?? 14) / 2;
     ctx.beginPath();
     ctx.strokeStyle = style.fontColor ?? '#333';
     ctx.lineWidth = 1;
-    ctx.moveTo(left, y);
-    ctx.lineTo(left + tw, y);
+    ctx.moveTo(textLeft, y);
+    ctx.lineTo(textLeft + tw, y);
     ctx.stroke();
   }
 }
@@ -233,18 +496,65 @@ function drawTodoRate(
   ctx.fillText(label, node.x + node.width / 2, node.y + node.height - 3);
 }
 
-function drawMarkers(ctx: CanvasRenderingContext2D, markers: string[], x: number, y: number) {
-  if (!markers.length) return;
-  ctx.font = '12px sans-serif';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'top';
-  ctx.fillStyle = '#333';
-  let ox = x;
-  for (const m of markers) {
-    const glyph = markerGlyph(m);
-    ctx.fillText(glyph, ox, y);
-    ox += ctx.measureText(glyph).width + 4;
+function hitTestMarkerAt(
+  world: { x: number; y: number },
+  sheet: Sheet,
+): { topicId: string; markerId: string; hit: MarkerHitRect } | null {
+  const layout = registry.layout(sheet, measure);
+  const measureCtx = canvasRef.value?.getContext('2d');
+  if (measureCtx) {
+    measureCtx.font = '12px sans-serif';
   }
+  const measureGlyph = (g: string) =>
+    measureCtx ? measureCtx.measureText(g).width : Math.max(14, [...g].length * 12);
+
+  const nodes = [...layout.nodes.values()].filter((n) => !n.hidden).reverse();
+  for (const node of nodes) {
+    const topic = findTopicInSheet(sheet, node.id);
+    if (!topic?.markers?.length) continue;
+    const content = layoutTopicContent(node, topic);
+    const hits = layoutMarkerHits(
+      topic.markers,
+      content.markersOrigin.x,
+      content.markersOrigin.y,
+      measureGlyph,
+    );
+    for (let i = hits.length - 1; i >= 0; i--) {
+      const h = hits[i]!;
+      if (
+        world.x >= h.x - 2 &&
+        world.x <= h.x + h.width + 2 &&
+        world.y >= h.y - 2 &&
+        world.y <= h.y + h.height + 2
+      ) {
+        return { topicId: node.id, markerId: h.markerId, hit: h };
+      }
+    }
+  }
+  return null;
+}
+
+function applyCalloutLivePatch(shape: ExtraShape, layout: LayoutResult): ExtraShape {
+  const drag = calloutDrag.value;
+  const live = calloutLiveOffset.value;
+  if (!drag || !live || shape.type !== 'callout' || shape.id !== drag.calloutId) return shape;
+  const node = layout.nodes.get(drag.topicId);
+  if (!node || node.hidden) return shape;
+  const bounds = calloutBoundsFromOffset(node, live, drag.text);
+  const anchor = topicCalloutAnchor(node);
+  return {
+    ...shape,
+    bounds,
+    style: {
+      ...shape.style,
+      anchorX: anchor.x,
+      anchorY: anchor.y,
+      topicX: node.x,
+      topicY: node.y,
+      topicW: node.width,
+      topicH: node.height,
+    },
+  };
 }
 
 function draw() {
@@ -277,49 +587,26 @@ function draw() {
   ctx.translate(-props.viewport.x * props.viewport.zoom, -props.viewport.y * props.viewport.zoom);
   ctx.scale(props.viewport.zoom, props.viewport.zoom);
 
-  // decorations
-  for (const dec of sheet.decorations) {
-    const asset = dec.assetId;
-    ctx.save();
-    ctx.translate(dec.x + dec.width / 2, dec.y + dec.height / 2);
-    ctx.rotate((dec.rotation * Math.PI) / 180);
-    ctx.font = `${Math.min(dec.width, dec.height)}px sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(asset === 'star' ? '⭐' : asset.startsWith('sketch') ? '▭' : '◆', 0, 0);
-    if (props.selectedDecorationId === dec.id) {
-      ctx.strokeStyle = '#4A90D9';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(-dec.width / 2, -dec.height / 2, dec.width, dec.height);
-      // scale/rotate handles
-      ctx.fillStyle = '#4A90D9';
-      ctx.fillRect(dec.width / 2 - 4, dec.height / 2 - 4, 8, 8);
-      ctx.beginPath();
-      ctx.arc(0, -dec.height / 2 - 12, 5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    ctx.restore();
-  }
-
   for (const layer of frame.layers) {
     if (layer.type === 'background') continue;
     if (layer.type === 'extra-shapes') {
       for (const shape of layer.shapes) {
-        drawExtraShape(ctx, shape, { roundRect });
+        const drawn = applyCalloutLivePatch(shape, layout);
+        drawExtraShape(ctx, drawn, { roundRect });
         if (
-          shape.type === 'boundary' &&
-          props.selectedStructure?.kind === 'boundary' &&
-          props.selectedStructure.id === shape.id
+          (drawn.type === 'boundary' || drawn.type === 'callout') &&
+          props.selectedStructure?.kind === drawn.type &&
+          props.selectedStructure.id === drawn.id
         ) {
           ctx.strokeStyle = '#4A90D9';
           ctx.lineWidth = 3;
           ctx.setLineDash([]);
           roundRect(
             ctx,
-            shape.bounds.x - 2,
-            shape.bounds.y - 2,
-            shape.bounds.width + 4,
-            shape.bounds.height + 4,
+            drawn.bounds.x - 2,
+            drawn.bounds.y - 2,
+            drawn.bounds.width + 4,
+            drawn.bounds.height + 4,
             6,
           );
           ctx.stroke();
@@ -382,6 +669,9 @@ function draw() {
       }
     }
   }
+
+  // stickers / illustrations above topics (visible free layer)
+  drawDecorations(ctx, sheet, layout.nodes);
 
   // Relationship arrows above topics so tip is never covered
   for (const layer of frame.layers) {
@@ -582,6 +872,8 @@ function pickStructureAt(world: { x: number; y: number }, sheet: Sheet): {
   const boundaryShapes =
     shapesLayer && shapesLayer.type === 'extra-shapes' ? shapesLayer.shapes : [];
 
+  const calloutHit = hitTestCallout(world, boundaryShapes);
+  if (calloutHit) return { kind: 'callout', id: calloutHit };
   const relHit = hitTestRelationship(world, relEdges);
   if (relHit) return { kind: 'relationship', id: relHit };
   const summaryHit = hitTestSummary(world, summaryEdges);
@@ -620,6 +912,75 @@ function onMouseDown(event: MouseEvent) {
         }
       }
 
+      // Stickers / illustrations: select + drag/resize; never start canvas pan
+      const decoHit = hitTestDecorationAt(world, sheet);
+      if (decoHit) {
+        emit('select-structure', null);
+        emit('select-decoration', decoHit.dec.id);
+        decoDrag.value = {
+          id: decoHit.dec.id,
+          mode: decoHit.handle,
+          startClientX: event.clientX,
+          startClientY: event.clientY,
+          origin: {
+            x: decoHit.dec.x,
+            y: decoHit.dec.y,
+            width: decoHit.dec.width,
+            height: decoHit.dec.height,
+            rotation: decoHit.dec.rotation,
+          },
+          center:
+            decoHit.handle === 'rotate'
+              ? {
+                  x: decoHit.rect.x + decoHit.rect.width / 2,
+                  y: decoHit.rect.y + decoHit.rect.height / 2,
+                }
+              : undefined,
+          moved: false,
+        };
+        decoLivePatch.value = null;
+        window.addEventListener('mousemove', onDecorationDragMove);
+        window.addEventListener('mouseup', onDecorationDragEnd);
+        event.preventDefault();
+        return;
+      }
+
+      // Marker sits outside the topic box — treat like topic so pan doesn't steal the click
+      const markerHit = hitTestMarkerAt(world, sheet);
+      if (markerHit) {
+        emit('select-structure', null);
+        return;
+      }
+
+      // Callout bubbles sit above topics; pick before topic so they remain clickable
+      {
+        const shapesLayer = buildFrame(sheet, layout).layers.find((l) => l.type === 'extra-shapes');
+        const shapes =
+          shapesLayer && shapesLayer.type === 'extra-shapes' ? shapesLayer.shapes : [];
+        const calloutHit = hitTestCallout(world, shapes);
+        if (calloutHit) {
+          const topic = findTopicByCalloutId(sheet, calloutHit);
+          suppressNextClick = true;
+          emit('select-structure', { kind: 'callout', id: calloutHit });
+          if (topic?.callout) {
+            calloutDrag.value = {
+              calloutId: calloutHit,
+              topicId: topic.id,
+              text: topic.callout.text,
+              startClientX: event.clientX,
+              startClientY: event.clientY,
+              baseOffset: { ...topic.callout.offset },
+              moved: false,
+            };
+            calloutLiveOffset.value = { ...topic.callout.offset };
+            window.addEventListener('mousemove', onCalloutDragMove);
+            window.addEventListener('mouseup', onCalloutDragEnd);
+          }
+          event.preventDefault();
+          return;
+        }
+      }
+
       const topicHit = hitTestTopic(
         world,
         [...layout.nodes.values()].filter((n) => !n.hidden),
@@ -644,6 +1005,141 @@ function onMouseDown(event: MouseEvent) {
   }
   emit('select-structure', null);
   onPointerDown(event, hitId, rootId);
+}
+
+function worldToDecorationLocal(
+  world: { x: number; y: number },
+  rect: { x: number; y: number; width: number; height: number },
+  rotationDeg: number,
+): { x: number; y: number } {
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  const dx = world.x - cx;
+  const dy = world.y - cy;
+  const rad = (-rotationDeg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+}
+
+function hitTestDecorationAt(
+  world: { x: number; y: number },
+  sheet: Sheet,
+): {
+  dec: (typeof sheet.decorations)[number];
+  rect: { x: number; y: number; width: number; height: number };
+  handle: DecorationDragMode;
+} | null {
+  const layout = registry.layout(sheet, measure);
+  const pad = 10 / Math.max(props.viewport.zoom, 0.01);
+  const rotateR = 10 / Math.max(props.viewport.zoom, 0.01);
+  const rotateStem = 14 / Math.max(props.viewport.zoom, 0.01);
+  for (let i = sheet.decorations.length - 1; i >= 0; i--) {
+    const raw = sheet.decorations[i]!;
+    const dec = decorationWithLivePatch(raw);
+    const rect = resolveDecorationWorldRect(dec, layout.nodes);
+    const local = worldToDecorationLocal(world, rect, dec.rotation);
+    const hw = rect.width / 2;
+    const hh = rect.height / 2;
+
+    if (props.selectedDecorationId === dec.id) {
+      // SE resize handle (local bottom-right)
+      if (
+        local.x >= hw - pad &&
+        local.x <= hw + pad &&
+        local.y >= hh - pad &&
+        local.y <= hh + pad
+      ) {
+        return { dec, rect, handle: 'resize' };
+      }
+      // top-center rotate handle
+      if (local.x ** 2 + (local.y + hh + rotateStem) ** 2 <= rotateR * rotateR) {
+        return { dec, rect, handle: 'rotate' };
+      }
+    }
+
+    if (local.x >= -hw && local.x <= hw && local.y >= -hh && local.y <= hh) {
+      return { dec, rect, handle: 'move' };
+    }
+  }
+  return null;
+}
+
+function onDecorationDragMove(event: MouseEvent) {
+  const drag = decoDrag.value;
+  if (!drag) return;
+  const zoom = Math.max(props.viewport.zoom, 0.01);
+  const dx = (event.clientX - drag.startClientX) / zoom;
+  const dy = (event.clientY - drag.startClientY) / zoom;
+  if (Math.hypot(dx, dy) > 2) drag.moved = true;
+
+  if (drag.mode === 'move') {
+    decoLivePatch.value = {
+      x: drag.origin.x + dx,
+      y: drag.origin.y + dy,
+    };
+  } else if (drag.mode === 'resize') {
+    // Project pointer delta into the decoration's local axes so SE handle stays intuitive when rotated
+    const rad = (drag.origin.rotation * Math.PI) / 180;
+    const cos = Math.cos(rad);
+    const sin = Math.sin(rad);
+    const localDx = dx * cos + dy * sin;
+    const localDy = -dx * sin + dy * cos;
+    decoLivePatch.value = {
+      width: Math.max(24, drag.origin.width + localDx),
+      height: Math.max(24, drag.origin.height + localDy),
+    };
+  } else if (drag.mode === 'rotate' && drag.center) {
+    const world = worldFromEvent(event);
+    if (world) {
+      const ang =
+        (Math.atan2(world.y - drag.center.y, world.x - drag.center.x) * 180) / Math.PI + 90;
+      decoLivePatch.value = { rotation: ((ang % 360) + 360) % 360 };
+    }
+  }
+  draw();
+}
+
+function onDecorationDragEnd() {
+  window.removeEventListener('mousemove', onDecorationDragMove);
+  window.removeEventListener('mouseup', onDecorationDragEnd);
+  const drag = decoDrag.value;
+  const patch = decoLivePatch.value;
+  decoDrag.value = null;
+  decoLivePatch.value = null;
+  if (drag?.moved && patch) {
+    suppressNextClick = true;
+    emit('update-decoration', { id: drag.id, patch });
+  }
+  draw();
+}
+
+function onCalloutDragMove(event: MouseEvent) {
+  const drag = calloutDrag.value;
+  if (!drag) return;
+  const zoom = Math.max(props.viewport.zoom, 0.01);
+  const dx = (event.clientX - drag.startClientX) / zoom;
+  const dy = (event.clientY - drag.startClientY) / zoom;
+  if (Math.hypot(dx, dy) > 2) drag.moved = true;
+  calloutLiveOffset.value = {
+    x: drag.baseOffset.x + dx,
+    y: drag.baseOffset.y + dy,
+  };
+  draw();
+}
+
+function onCalloutDragEnd() {
+  window.removeEventListener('mousemove', onCalloutDragMove);
+  window.removeEventListener('mouseup', onCalloutDragEnd);
+  const drag = calloutDrag.value;
+  const live = calloutLiveOffset.value;
+  calloutDrag.value = null;
+  calloutLiveOffset.value = null;
+  if (drag?.moved && live) {
+    suppressNextClick = true;
+    emit('update-callout', { topicId: drag.topicId, offset: live });
+  }
+  draw();
 }
 
 function onRelControlMove(event: MouseEvent) {
@@ -743,13 +1239,48 @@ function onClick(event: MouseEvent) {
         x: (event.clientX - rect.left) / props.viewport.zoom + props.viewport.x,
         y: (event.clientY - rect.top) / props.viewport.zoom + props.viewport.y,
       };
-      for (let i = props.sheet.decorations.length - 1; i >= 0; i--) {
-        const d = props.sheet.decorations[i]!;
-        if (world.x >= d.x && world.x <= d.x + d.width && world.y >= d.y && world.y <= d.y + d.height) {
-          emit('select-decoration', d.id);
+
+      const markerHit = hitTestMarkerAt(world, props.sheet);
+      if (markerHit) {
+        emit('select', {
+          id: markerHit.topicId,
+          shiftKey: false,
+          ctrlKey: false,
+          metaKey: false,
+        });
+        const left =
+          rect.left +
+          (markerHit.hit.x + markerHit.hit.width / 2 - props.viewport.x) * props.viewport.zoom;
+        const top =
+          rect.top +
+          (markerHit.hit.y + markerHit.hit.height - props.viewport.y) * props.viewport.zoom;
+        emit('edit-marker', {
+          topicId: markerHit.topicId,
+          markerId: markerHit.markerId,
+          left,
+          top,
+        });
+        return;
+      }
+
+      const decoHit = hitTestDecorationAt(world, props.sheet);
+      if (decoHit) {
+        emit('select-decoration', decoHit.dec.id);
+        return;
+      }
+
+      {
+        const layout = registry.layout(props.sheet, measure);
+        const shapesLayer = buildFrame(props.sheet, layout).layers.find((l) => l.type === 'extra-shapes');
+        const shapes =
+          shapesLayer && shapesLayer.type === 'extra-shapes' ? shapesLayer.shapes : [];
+        const calloutHit = hitTestCallout(world, shapes);
+        if (calloutHit) {
+          emit('select-structure', { kind: 'callout', id: calloutHit });
           return;
         }
       }
+
       const topicHit = hitTestTopic(
         world,
         [...registry.layout(props.sheet, measure).nodes.values()].filter((n) => !n.hidden),
@@ -854,7 +1385,14 @@ function pickTopic(
 }
 
 watch(
-  () => [props.sheet, props.viewport, props.selectedIds, props.selectedStructure],
+  () => [
+    props.sheet,
+    props.viewport,
+    props.selectedIds,
+    props.selectedStructure,
+    props.selectedDecorationId,
+    props.alignGuides,
+  ],
   draw,
   { deep: true },
 );
