@@ -107,6 +107,7 @@ export {
 } from './render/callout-geometry.js';
 export {
   buildBracePath,
+  buildBraceStem,
   drawExtraShape,
   extraShapeSvgElement,
   type DrawExtraShapeOptions,
@@ -139,9 +140,15 @@ export {
   type CollapseButtonLayout,
   type CollapseSide,
 } from './render/collapse-button.js';
-export { listThemes, getTheme, BUILTIN_THEMES } from './theme/presets.js';
+export { listThemes, getBuiltinTheme, BUILTIN_THEMES } from './theme/presets.js';
 export { generatePalette, generateThemeFromSeed } from './theme/color-gen.js';
-export { loadCustomThemes, saveCustomTheme, listAllThemes } from './theme/custom.js';
+export {
+  loadCustomThemes,
+  saveCustomTheme,
+  deleteCustomTheme,
+  listAllThemes,
+  getTheme,
+} from './theme/custom.js';
 export { SearchService, getBranchTopicIds, type SearchResult, type SearchOptions } from './search/service.js';
 export { sanitizeHtml, stripHtml } from './utils/sanitize.js';
 export {

@@ -8,10 +8,12 @@ export {
 } from './topic-commands.js';
 export {
   UpdateSheetStructureCommand,
+  UpdateStructureOptionsCommand,
   AddSheetCommand,
   DeleteSheetCommand,
   RenameSheetCommand,
   UpdateThemeCommand,
+  ClearThemeUsagesCommand,
   UpdateCanvasSettingsCommand,
   ApplyStructureVariantCommand,
 } from './sheet-commands.js';

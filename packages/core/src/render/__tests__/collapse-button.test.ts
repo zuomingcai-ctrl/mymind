@@ -40,6 +40,12 @@ describe('collapse-button', () => {
     expect(
       defaultCollapseSide('logic-chart', { type: 'logic-chart', direction: 'left' }),
     ).toBe('left');
+    expect(
+      defaultCollapseSide('brace-map', { type: 'brace-map', braceSide: 'left' }),
+    ).toBe('left');
+    expect(
+      defaultCollapseSide('brace-map', { type: 'brace-map', braceSide: 'right' }),
+    ).toBe('right');
   });
 
   it('collapseButtonCenter sits outside the node edge', () => {

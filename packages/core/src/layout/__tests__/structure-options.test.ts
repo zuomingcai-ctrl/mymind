@@ -35,6 +35,25 @@ describe('structure option semantics', () => {
     expect(result.nodes.get(rootId)!.y).toBeGreaterThan(result.nodes.get(childId)!.y);
   });
 
+  it('timeline alternate=false keeps all events on the above/left side', () => {
+    const doc = createDocument('x', 'timeline');
+    const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'timeline',
+      axis: 'horizontal',
+      alternate: false,
+      showScale: true,
+    };
+    let d = doc;
+    for (let i = 0; i < 3; i++) {
+      d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, `e${i}`).execute(d);
+    }
+    const result = registry.layout(d.sheets[0]!, measure);
+    const root = result.nodes.get(sheet.rootTopic.id)!;
+    const events = [...result.nodes.values()].filter((n) => n.depth === 1);
+    expect(events.every((n) => n.y + n.height <= root.y + root.height)).toBe(true);
+  });
+
   it('timeline vertical places events along Y and respects axis', () => {
     const doc = createDocument('x', 'timeline');
     const sheet = doc.sheets[0]!;
@@ -91,6 +110,42 @@ describe('structure option semantics', () => {
     expect(result.nodes.get(early.id)!.x).toBeLessThan(result.nodes.get(late.id)!.x);
   });
 
+  it('brace-map braceSide=right places brace to the right of root', () => {
+    const doc = createDocument('x', 'brace-map');
+    const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'brace-map',
+      braceSide: 'right',
+      partPosition: 'opposite',
+    };
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'p1').execute(doc);
+    d = new AddTopicCommand(sheet.id, d.sheets[0]!.rootTopic.id, 'p2').execute(d);
+    const result = registry.layout(d.sheets[0]!, measure);
+    const root = result.nodes.get(d.sheets[0]!.rootTopic.id)!;
+    const brace = result.extraShapes.find((s) => s.type === 'brace')!;
+    expect(brace.bounds.x).toBeGreaterThan(root.x + root.width);
+    expect(brace.style?.openSide).toBe('right');
+    const parts = [...result.nodes.values()].filter((n) => n.depth === 1);
+    expect(parts.every((p) => p.x > brace.bounds.x)).toBe(true);
+  });
+
+  it('brace-map braceSide=left places brace to the left of root', () => {
+    const doc = createDocument('x', 'brace-map');
+    const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'brace-map',
+      braceSide: 'left',
+      partPosition: 'opposite',
+    };
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'p1').execute(doc);
+    d = new AddTopicCommand(sheet.id, d.sheets[0]!.rootTopic.id, 'p2').execute(d);
+    const result = registry.layout(d.sheets[0]!, measure);
+    const root = result.nodes.get(d.sheets[0]!.rootTopic.id)!;
+    const brace = result.extraShapes.find((s) => s.type === 'brace')!;
+    expect(brace.bounds.x + brace.bounds.width).toBeLessThan(root.x);
+    expect(brace.style?.openSide).toBe('left');
+  });
+
   it('brace-map partPosition same stacks parts beside root column', () => {
     const doc = createDocument('x', 'brace-map');
     const sheet = doc.sheets[0]!;
@@ -118,21 +173,147 @@ describe('structure option semantics', () => {
     expect(result.nodes.size).toBe(3);
   });
 
-  it('fishbone lays out grandchildren along the bone', () => {
+  it('fishbone places category at bone tip and ribs horizontally', () => {
     const doc = createDocument('x', 'fishbone');
     const sheet = doc.sheets[0]!;
     let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'cause').execute(doc);
     const causeId = d.sheets[0]!.rootTopic.children[0]!.id;
     d = new AddTopicCommand(sheet.id, causeId, 'detail').execute(d);
     const result = registry.layout(d.sheets[0]!, measure);
+    const root = result.nodes.get(d.sheets[0]!.rootTopic.id)!;
     const cause = result.nodes.get(causeId)!;
     const detailId = d.sheets[0]!.rootTopic.children[0]!.children[0]!.id;
     const detail = result.nodes.get(detailId)!;
     expect(detail).toBeDefined();
-    // detail should be offset from cause along branch (not purely vertical stack under same x)
-    const dx = Math.abs(detail.x + detail.width / 2 - (cause.x + cause.width / 2));
-    const dy = Math.abs(detail.y + detail.height / 2 - (cause.y + cause.height / 2));
-    expect(dx + dy).toBeGreaterThan(20);
+
+    // Category sits off the spine (diagonal tip).
+    const spineY = root.y + root.height / 2;
+    expect(Math.abs(cause.y + cause.height / 2 - spineY)).toBeGreaterThan(20);
+
+    // Rib sits between spine and category tip, offset horizontally toward the head.
+    const causeCy = cause.y + cause.height / 2;
+    expect(Math.abs(detail.y + detail.height - causeCy)).toBeGreaterThan(5);
+
+    // Bone edge is diagonal; rib edge is horizontal underline (Δy ≈ 0, has length).
+    const bone = result.edges.find((e) => e.from === root.id && e.to === causeId)!;
+    const rib = result.edges.find((e) => e.from === causeId && e.to === detailId)!;
+    expect(Math.abs(bone.points[0]!.y - bone.points[1]!.y)).toBeGreaterThan(10);
+    expect(Math.abs(rib.points[0]!.y - rib.points[1]!.y)).toBeLessThan(1);
+    expect(Math.abs(rib.points[0]!.x - rib.points[1]!.x)).toBeGreaterThan(20);
+  });
+
+  it('fishbone nested siblings do not overlap along the bone', () => {
+    const doc = createDocument('x', 'fishbone');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'A').execute(doc);
+    const a = d.sheets[0]!.rootTopic.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, a, 'A1').execute(d);
+    d = new AddTopicCommand(sheet.id, a, 'A2').execute(d);
+    const a1 = d.sheets[0]!.rootTopic.children[0]!.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, a1, 'A1a').execute(d);
+    const result = registry.layout(d.sheets[0]!, measure);
+    const nodes = [...result.nodes.values()];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const aN = nodes[i]!;
+        const bN = nodes[j]!;
+        const overlap =
+          aN.x < bN.x + bN.width &&
+          aN.x + aN.width > bN.x &&
+          aN.y < bN.y + bN.height &&
+          aN.y + aN.height > bN.y;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+
+  it('timeline nested siblings do not overlap on a branch', () => {
+    const doc = createDocument('x', 'timeline');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'A').execute(doc);
+    const a = d.sheets[0]!.rootTopic.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, a, 'A1').execute(d);
+    d = new AddTopicCommand(sheet.id, a, 'A2').execute(d);
+    const a1 = d.sheets[0]!.rootTopic.children[0]!.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, a1, 'A1a').execute(d);
+    const result = registry.layout(d.sheets[0]!, measure);
+    const nodes = [...result.nodes.values()];
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const aN = nodes[i]!;
+        const bN = nodes[j]!;
+        const overlap =
+          aN.x < bN.x + bN.width &&
+          aN.x + aN.width > bN.x &&
+          aN.y < bN.y + bN.height &&
+          aN.y + aN.height > bN.y;
+        expect(overlap).toBe(false);
+      }
+    }
+  });
+
+  it('timeline multi-level grows along the axis as a tree', () => {
+    const doc = createDocument('x', 'timeline');
+    const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'timeline',
+      axis: 'horizontal',
+      alternate: true,
+      showScale: true,
+    };
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'event').execute(doc);
+    const eventId = d.sheets[0]!.rootTopic.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, eventId, 'A1').execute(d);
+    d = new AddTopicCommand(sheet.id, eventId, 'A2').execute(d);
+    const a1 = d.sheets[0]!.rootTopic.children[0]!.children[0]!.id;
+    const a2 = d.sheets[0]!.rootTopic.children[0]!.children[1]!.id;
+    d = new AddTopicCommand(sheet.id, a1, 'A1a').execute(d);
+    const a1a = d.sheets[0]!.rootTopic.children[0]!.children[0]!.children[0]!.id;
+    const result = registry.layout(d.sheets[0]!, measure);
+    const event = result.nodes.get(eventId)!;
+    const n1 = result.nodes.get(a1)!;
+    const n2 = result.nodes.get(a2)!;
+    const n1a = result.nodes.get(a1a)!;
+    // Children sit to the right of the event (along the axis), not in a column under it.
+    expect(n1.x).toBeGreaterThan(event.x + event.width);
+    expect(n2.x).toBeGreaterThan(event.x + event.width);
+    expect(n1a.x).toBeGreaterThan(n1.x + n1.width);
+    // Siblings stack vertically at the same depth column.
+    expect(Math.abs(n1.x - n2.x)).toBeLessThan(1);
+    expect(n1.y).toBeLessThan(n2.y);
+  });
+
+  it('matrix lays out nested descendants beyond depth 2', () => {
+    const doc = createDocument('x', 'matrix');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'q0').execute(doc);
+    const q0 = d.sheets[0]!.rootTopic.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, q0, 'l2').execute(d);
+    const l2 = d.sheets[0]!.rootTopic.children[0]!.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, l2, 'l3').execute(d);
+    const l3 = d.sheets[0]!.rootTopic.children[0]!.children[0]!.children[0]!.id;
+    const result = registry.layout(d.sheets[0]!, measure);
+    expect(result.nodes.get(l3)).toBeDefined();
+    expect(result.nodes.get(l3)!.depth).toBe(3);
+    expect(result.nodes.get(l3)!.y).toBeGreaterThan(result.nodes.get(l2)!.y);
+  });
+
+  it('org-chart uses larger layer gap than tree-chart', () => {
+    function buildDoc(structure: 'org-chart' | 'tree-chart') {
+      const doc = createDocument('x', structure);
+      const sheet = doc.sheets[0]!;
+      let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'c1').execute(doc);
+      return d;
+    }
+    const org = registry.layout(buildDoc('org-chart').sheets[0]!, measure);
+    const tree = registry.layout(buildDoc('tree-chart').sheets[0]!, measure);
+    const orgRoot = [...org.nodes.values()].find((n) => n.depth === 0)!;
+    const orgChild = [...org.nodes.values()].find((n) => n.depth === 1)!;
+    const treeRoot = [...tree.nodes.values()].find((n) => n.depth === 0)!;
+    const treeChild = [...tree.nodes.values()].find((n) => n.depth === 1)!;
+    const orgGap = orgChild.y - (orgRoot.y + orgRoot.height);
+    const treeGap = treeChild.y - (treeRoot.y + treeRoot.height);
+    expect(orgGap).toBeGreaterThan(treeGap);
   });
 
   it('tree-table emits column headers and note cells from columns', () => {

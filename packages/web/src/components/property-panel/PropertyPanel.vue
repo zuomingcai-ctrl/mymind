@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
-import type { Sheet, Topic, TopicStyle, EdgeStyle } from '@mymind/core';
+import type { Sheet, Topic, TopicStyle, EdgeStyle, Theme } from '@mymind/core';
 import {
   UpdateNoteCommand,
   AddLabelCommand,
   DeleteLabelCommand,
   UpdateThemeCommand,
-  listThemes,
+  ClearThemeUsagesCommand,
+  listAllThemes,
+  loadCustomThemes,
+  saveCustomTheme,
+  deleteCustomTheme,
+  getTheme,
+  BUILTIN_THEMES,
   ToggleTodoCommand,
   DeleteTodoCommand,
   ReorderTodosCommand,
@@ -29,6 +35,7 @@ import {
 } from '@mymind/core';
 import { useDocument } from '../../composables/useDocument';
 import StructurePicker from './StructurePicker.vue';
+import CustomThemeDialog from './CustomThemeDialog.vue';
 import { Top, Bottom, Close, Plus } from '@element-plus/icons-vue';
 import type { StructureSelectionKind } from '../canvas/CanvasView.vue';
 
@@ -46,8 +53,21 @@ const emit = defineEmits<{
 
 const activeTab = ref('style');
 const { dispatch } = useDocument();
-const themes = listThemes();
+const themes = ref<Theme[]>(listAllThemes());
+const customThemeDialog = ref(false);
+const customThemeSource = ref<Theme>(BUILTIN_THEMES[0]!);
+const customThemeEditExisting = ref(false);
 const markers = listMarkers();
+
+const isCustomThemeSelected = computed(() => {
+  const id = props.sheet?.canvasSettings.themeId;
+  if (!id) return false;
+  return loadCustomThemes().some((t) => t.id === id);
+});
+
+function refreshThemes() {
+  themes.value = listAllThemes();
+}
 const noteRef = ref<{ focus: () => void } | null>(null);
 const commentRef = ref<{ focus: () => void; input?: HTMLInputElement } | null>(null);
 const equationRef = ref<{ focus: () => void } | null>(null);
@@ -150,6 +170,28 @@ function removeLabel(labelId: string) {
 function onThemeChange(themeId: string) {
   if (!props.sheet) return;
   dispatch(new UpdateThemeCommand(props.sheet.id, themeId));
+}
+
+function openCustomThemeDialog(editExisting = false) {
+  const current = props.sheet ? getTheme(props.sheet.canvasSettings.themeId) : BUILTIN_THEMES[0]!;
+  customThemeSource.value = structuredClone(current);
+  customThemeEditExisting.value = editExisting && isCustomThemeSelected.value;
+  customThemeDialog.value = true;
+}
+
+function onCustomThemeSave(theme: Theme) {
+  if (!props.sheet) return;
+  saveCustomTheme(theme);
+  refreshThemes();
+  dispatch(new UpdateThemeCommand(props.sheet.id, theme.id));
+}
+
+function removeSelectedCustomTheme() {
+  if (!props.sheet || !isCustomThemeSelected.value) return;
+  const id = props.sheet.canvasSettings.themeId;
+  deleteCustomTheme(id);
+  refreshThemes();
+  dispatch(new ClearThemeUsagesCommand(id, 'default'));
 }
 
 function patchCanvas(patch: Partial<Sheet['canvasSettings']>) {
@@ -655,24 +697,61 @@ const borderLineType = computed({
         </el-scrollbar>
       </el-tab-pane>
 
+      <el-tab-pane label="结构" name="structure">
+        <template #label>
+          <span data-testid="tab-structure">结构</span>
+        </template>
+        <el-scrollbar class="tab-scroll">
+          <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
+        </el-scrollbar>
+      </el-tab-pane>
+
       <el-tab-pane label="画布" name="canvas">
         <template #label>
           <span data-testid="tab-canvas">画布</span>
         </template>
         <el-scrollbar class="tab-scroll">
           <el-form label-position="top" size="small">
-            <el-form-item label="结构">
-              <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
-            </el-form-item>
             <el-form-item label="主题">
-              <el-select
-                :model-value="sheet?.canvasSettings.themeId ?? 'default'"
-                style="width: 100%"
-                @change="onThemeChange"
-              >
-                <el-option v-for="theme in themes" :key="theme.id" :label="theme.name" :value="theme.id" />
-              </el-select>
+              <div class="theme-row">
+                <el-select
+                  data-testid="canvas-theme-select"
+                  :model-value="sheet?.canvasSettings.themeId ?? 'default'"
+                  style="flex: 1"
+                  @change="onThemeChange"
+                >
+                  <el-option
+                    v-for="theme in themes"
+                    :key="theme.id"
+                    :label="theme.name"
+                    :value="theme.id"
+                  />
+                </el-select>
+                <el-button size="small" @click="openCustomThemeDialog(false)">新建</el-button>
+                <el-button
+                  v-if="isCustomThemeSelected"
+                  size="small"
+                  @click="openCustomThemeDialog(true)"
+                >
+                  编辑
+                </el-button>
+                <el-button
+                  v-if="isCustomThemeSelected"
+                  size="small"
+                  type="danger"
+                  plain
+                  @click="removeSelectedCustomTheme"
+                >
+                  删除
+                </el-button>
+              </div>
             </el-form-item>
+            <CustomThemeDialog
+              v-model="customThemeDialog"
+              :source="customThemeSource"
+              :edit-existing="customThemeEditExisting"
+              @save="onCustomThemeSave"
+            />
             <el-form-item label="背景颜色">
               <el-color-picker
                 :model-value="sheet?.canvasSettings.backgroundColor ?? '#ffffff'"
@@ -749,6 +828,12 @@ const borderLineType = computed({
   flex-direction: column;
   max-height: 100%;
   overflow: hidden;
+}
+.theme-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
 }
 .panel-tabs {
   height: 100%;

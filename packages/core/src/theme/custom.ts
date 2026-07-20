@@ -20,6 +20,17 @@ export function saveCustomTheme(theme: Theme): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(themes));
 }
 
+export function deleteCustomTheme(id: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const themes = loadCustomThemes().filter((t) => t.id !== id);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(themes));
+}
+
 export function listAllThemes(): Theme[] {
   return [...BUILTIN_THEMES, ...loadCustomThemes()];
+}
+
+/** Resolve builtin or custom theme; falls back to default. */
+export function getTheme(id: string): Theme {
+  return listAllThemes().find((t) => t.id === id) ?? BUILTIN_THEMES[0]!;
 }

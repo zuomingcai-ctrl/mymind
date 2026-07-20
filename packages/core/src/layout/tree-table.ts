@@ -46,7 +46,7 @@ function cellText(topic: Topic, field: TreeTableColumn['field']): string {
 export function layoutTreeTable(
   root: Topic,
   options: StructureOptions,
-  measure: MeasureFn,
+  _measure: MeasureFn,
 ): LayoutResult {
   const showTreeLine = options.type === 'tree-table' ? options.showTreeLine : true;
   const columns: TreeTableColumn[] =

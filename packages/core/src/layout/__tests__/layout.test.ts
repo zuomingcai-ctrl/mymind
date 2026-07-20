@@ -23,6 +23,14 @@ describe('layout', () => {
     expect(lines.length).toBeGreaterThan(1);
   });
 
+  it('default autosize does not wrap long titles', () => {
+    const m = new TextMeasurer();
+    const long = '这是一段很长很长很长很长很长很长的主题文字内容不应该默认折行';
+    const size = m.measureText(long);
+    expect(size.lines).toHaveLength(1);
+    expect(size.width).toBeGreaterThan(200);
+  });
+
   it('fixed topic width wraps text and grows height', () => {
     const doc = createDocument();
     const rootId = doc.sheets[0]!.rootTopic.id;
@@ -39,6 +47,7 @@ describe('layout', () => {
     const fixed = m.measureTopic(d.sheets[0]!.rootTopic, 0);
     expect(fixed.width).toBe(60);
     expect(fixed.height).toBeGreaterThan(auto.height);
+    expect(auto.width).toBeGreaterThan(fixed.width);
   });
 
   it('mindmap layout produces nodes for 5-node tree', () => {
@@ -95,6 +104,24 @@ describe('layout', () => {
     const root = result.nodes.get(rootId)!;
     const child = result.nodes.get(childId)!;
     expect(child.y).toBeGreaterThan(root.y);
+  });
+
+  it('tree-chart places siblings on the same horizontal row', () => {
+    const doc = createDocument('x', 'tree-chart');
+    const sheet = doc.sheets[0]!;
+    let d = doc;
+    const rootId = sheet.rootTopic.id;
+    d = new AddTopicCommand(sheet.id, rootId, 'a').execute(d);
+    d = new AddTopicCommand(sheet.id, rootId, 'b').execute(d);
+    d = new AddTopicCommand(sheet.id, rootId, 'c').execute(d);
+    const result = registry.layout(d.sheets[0]!, measure);
+    const siblings = [...result.nodes.values()].filter((n) => n.depth === 1);
+    expect(siblings).toHaveLength(3);
+    const ys = siblings.map((n) => n.y);
+    expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(1);
+    const xs = siblings.map((n) => n.x).sort((a, b) => a - b);
+    expect(xs[1]! - xs[0]!).toBeGreaterThan(20);
+    expect(xs[2]! - xs[1]!).toBeGreaterThan(20);
   });
 
   it('tree-chart bottom-up places root below children', () => {

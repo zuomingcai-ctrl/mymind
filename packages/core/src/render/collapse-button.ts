@@ -38,7 +38,12 @@ export function defaultCollapseSide(
       const dir = options?.type === 'logic-chart' ? options.direction : 'right';
       return dir === 'left' ? 'left' : 'right';
     }
-    case 'brace-map':
+    case 'brace-map': {
+      if (options?.type === 'brace-map') {
+        return options.braceSide === 'left' ? 'left' : 'right';
+      }
+      return 'right';
+    }
     case 'fishbone':
       return 'right';
     case 'tree-chart':

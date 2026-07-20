@@ -1,4 +1,9 @@
-import type { MindMapDocument, StructureType, CanvasSettings } from '../model/types.js';
+import type {
+  MindMapDocument,
+  StructureType,
+  StructureOptions,
+  CanvasSettings,
+} from '../model/types.js';
 import { createSheet, updateSheetInDocument } from '../model/factory.js';
 import { defaultStructureOptions } from '../model/types.js';
 import { getStructureVariant } from '../structure/variants.js';
@@ -7,7 +12,7 @@ import type { Command } from './types.js';
 export class UpdateSheetStructureCommand implements Command {
   readonly name = 'UpdateSheetStructure';
   private previousStructure: StructureType | null = null;
-  private previousOptions: import('../model/types.js').StructureOptions | null = null;
+  private previousOptions: StructureOptions | null = null;
 
   constructor(
     private readonly sheetId: string,
@@ -32,6 +37,38 @@ export class UpdateSheetStructureCommand implements Command {
       ...sheet,
       structure: this.previousStructure!,
       structureOptions: this.previousOptions!,
+    }));
+  }
+}
+
+/** Patch StructureOptions for the current structure type (type field must match sheet.structure). */
+export class UpdateStructureOptionsCommand implements Command {
+  readonly name = 'UpdateStructureOptions';
+  private previousOptions: StructureOptions | null = null;
+
+  constructor(
+    private readonly sheetId: string,
+    private readonly options: StructureOptions,
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    return updateSheetInDocument(state, this.sheetId, (sheet) => {
+      if (this.options.type !== sheet.structure) {
+        throw new Error(
+          `StructureOptions type ${this.options.type} does not match sheet structure ${sheet.structure}`,
+        );
+      }
+      this.previousOptions = sheet.structureOptions;
+      return { ...sheet, structureOptions: this.options };
+    });
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    if (!this.previousOptions) return state;
+    const prev = this.previousOptions;
+    return updateSheetInDocument(state, this.sheetId, (sheet) => ({
+      ...sheet,
+      structureOptions: prev,
     }));
   }
 }
@@ -160,6 +197,42 @@ export class UpdateThemeCommand implements Command {
       ...sheet,
       canvasSettings: { ...sheet.canvasSettings, themeId: prev },
     }));
+  }
+}
+
+/** Reset every sheet that uses `themeId` to `fallbackThemeId` (e.g. after deleting a custom theme). */
+export class ClearThemeUsagesCommand implements Command {
+  readonly name = 'ClearThemeUsages';
+  private previous = new Map<string, string>();
+
+  constructor(
+    private readonly themeId: string,
+    private readonly fallbackThemeId = 'default',
+  ) {}
+
+  execute(state: MindMapDocument): MindMapDocument {
+    this.previous.clear();
+    let next = state;
+    for (const sheet of state.sheets) {
+      if (sheet.canvasSettings.themeId !== this.themeId) continue;
+      this.previous.set(sheet.id, sheet.canvasSettings.themeId);
+      next = updateSheetInDocument(next, sheet.id, (s) => ({
+        ...s,
+        canvasSettings: { ...s.canvasSettings, themeId: this.fallbackThemeId },
+      }));
+    }
+    return next;
+  }
+
+  undo(state: MindMapDocument): MindMapDocument {
+    let next = state;
+    for (const [sheetId, themeId] of this.previous) {
+      next = updateSheetInDocument(next, sheetId, (s) => ({
+        ...s,
+        canvasSettings: { ...s.canvasSettings, themeId },
+      }));
+    }
+    return next;
   }
 }
 

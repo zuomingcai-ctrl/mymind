@@ -13,7 +13,6 @@ import {
   collectHidden,
   finalizeResult,
   flipLayoutVertical,
-  layoutSubtreeWidth,
   layoutTreeVertical,
   LEVEL_GAP,
   type SummaryReserve,
@@ -308,9 +307,7 @@ export function layoutTreeChart(
   const hiddenIds = collectHidden(root);
   const ctx: TreeLayoutContext = { nodes, edges, measure, hiddenIds, vGap: V_GAP };
 
-  const rootSize = measure(root, 0);
-  const totalWidth = layoutSubtreeWidth(root, 0, ctx);
-  layoutTreeVertical(root, 0, totalWidth / 2 - rootSize.width / 2, 0, ctx);
+  layoutTreeVertical(root, 0, 0, 0, ctx);
 
   const direction = options.type === 'tree-chart' ? options.direction : 'top-down';
   if (direction === 'bottom-up') {

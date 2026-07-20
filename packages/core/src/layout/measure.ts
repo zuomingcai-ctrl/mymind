@@ -15,10 +15,12 @@ const H_PADDING = 24;
 const V_PADDING = 12;
 const MIN_WIDTH = 80;
 const LINE_HEIGHT = 20;
-const MAX_TEXT_WIDTH = 200;
+/** Default: no wrap cap — topic width follows text (autosize / 「适合」). */
+const DEFAULT_MAX_TEXT_WIDTH = Number.POSITIVE_INFINITY;
 
 export interface TextMeasurerOptions {
   font?: string;
+  /** When finite, plain text wraps to this content width. Default: unlimited (autosize). */
   maxTextWidth?: number;
 }
 
@@ -65,7 +67,7 @@ export class TextMeasurer {
   private charWidthCache = new Map<string, number>();
 
   constructor(options: TextMeasurerOptions = {}) {
-    this.maxTextWidth = options.maxTextWidth ?? MAX_TEXT_WIDTH;
+    this.maxTextWidth = options.maxTextWidth ?? DEFAULT_MAX_TEXT_WIDTH;
   }
 
   measureText(
@@ -74,7 +76,10 @@ export class TextMeasurer {
   ): { width: number; height: number; lines: string[] } {
     const lines = wrapPlainText(text, maxTextWidth, (s) => this.measureLine(s));
     const lineWidth = Math.max(...lines.map((l) => this.measureLine(l)), 0);
-    const width = Math.min(lineWidth + H_PADDING, maxTextWidth + H_PADDING);
+    const padded = lineWidth + H_PADDING;
+    const width = Number.isFinite(maxTextWidth)
+      ? Math.min(padded, maxTextWidth + H_PADDING)
+      : padded;
     const height = lines.length * LINE_HEIGHT + V_PADDING;
     return { width: Math.max(width, MIN_WIDTH), height, lines };
   }

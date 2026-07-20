@@ -10,8 +10,8 @@ import type {
 import { buildHorizontalCurvePoints, buildLogicPolylinePoints } from './edge-paths.js';
 import { collectHidden, finalizeResult, LEVEL_GAP, V_GAP } from './utils.js';
 
-const BRACE_WIDTH = 12;
-const BRACE_GAP = 10;
+const BRACE_WIDTH = 16;
+const BRACE_GAP = 12;
 
 interface LogicChartConfig {
   direction: 'left' | 'right';
@@ -72,12 +72,12 @@ function measureLogicNode(
   display: 'box' | 'underline',
   measure: MeasureFn,
 ) {
+  const size = measure(topic, depth);
   if (display === 'underline') {
-    const text = topic.title || ' ';
-    const width = Math.min(Math.max(text.length * 8 + 20, 52), 150);
-    return { width, height: 12 };
+    // Keep underline visual short, but width must follow real text (CJK-safe autosize).
+    return { width: size.width, height: Math.max(14, Math.round(size.height * 0.45)) };
   }
-  return measure(topic, depth);
+  return size;
 }
 
 export function layoutLogicChart(
@@ -90,7 +90,6 @@ export function layoutLogicChart(
   const edges: LayoutEdge[] = [];
   const extraShapes: ExtraShape[] = [];
   const hiddenIds = collectHidden(root);
-  const sign = config.direction === 'right' ? 1 : -1;
   let braceSeq = 0;
 
   function addEdge(
@@ -108,10 +107,25 @@ export function layoutLogicChart(
     edges.push({ id: `${from}-${to}`, from, to, points, type: 'tree' });
   }
 
+  function blockHeight(topic: Topic, depth: number): number {
+    if (hiddenIds.has(topic.id)) return 0;
+    const display = resolveDisplay(topic, depth, config, hiddenIds);
+    const size = measureLogicNode(topic, depth, display, measure);
+    if (topic.collapsed) return size.height;
+    const children = topic.children.filter((c) => !hiddenIds.has(c.id));
+    if (children.length === 0) return size.height;
+    let childrenH = 0;
+    for (let i = 0; i < children.length; i++) {
+      childrenH += blockHeight(children[i]!, depth + 1);
+      if (i < children.length - 1) childrenH += V_GAP;
+    }
+    return Math.max(size.height, childrenH);
+  }
+
   function layout(
     topic: Topic,
     depth: number,
-    y: number,
+    bandTop: number,
     parentId?: string,
     extraX = 0,
   ): number {
@@ -120,13 +134,27 @@ export function layoutLogicChart(
     const size = measureLogicNode(topic, depth, display, measure);
     const x =
       config.direction === 'right'
-        ? depth * LEVEL_GAP * sign + extraX
-        : depth * LEVEL_GAP * sign - size.width - extraX;
+        ? depth * LEVEL_GAP + extraX
+        : -depth * LEVEL_GAP - size.width - extraX;
+
+    const children =
+      topic.collapsed ? [] : topic.children.filter((c) => !hiddenIds.has(c.id));
+    const useBrace = config.groupLeaves === 'brace' && isLeafGroup(topic, hiddenIds);
+    const childExtraX = useBrace ? BRACE_WIDTH + BRACE_GAP : 0;
+
+    let childrenH = 0;
+    for (const child of children) {
+      childrenH += blockHeight(child, depth + 1);
+    }
+    if (children.length > 1) childrenH += V_GAP * (children.length - 1);
+
+    const blockH = Math.max(size.height, childrenH || size.height);
+    const nodeY = bandTop + (blockH - size.height) / 2;
 
     nodes.set(topic.id, {
       id: topic.id,
       x,
-      y,
+      y: nodeY,
       width: size.width,
       height: size.height,
       depth,
@@ -143,21 +171,20 @@ export function layoutLogicChart(
         fromX,
         parent.y + parent.height / 2,
         toX,
-        y + size.height / 2,
+        nodeY + size.height / 2,
       );
     }
 
-    let currentY = y;
-    if (!topic.collapsed) {
-      const children = topic.children.filter((c) => !hiddenIds.has(c.id));
-      const useBrace = config.groupLeaves === 'brace' && isLeafGroup(topic, hiddenIds);
-      const childExtraX = useBrace ? BRACE_WIDTH + BRACE_GAP : 0;
+    if (children.length > 0) {
+      let currentY = bandTop + (blockH - childrenH) / 2;
       const childIds: string[] = [];
 
-      for (const child of children) {
+      for (let i = 0; i < children.length; i++) {
+        const child = children[i]!;
         const h = layout(child, depth + 1, currentY, topic.id, childExtraX);
         childIds.push(child.id);
-        currentY += h + V_GAP;
+        currentY += h;
+        if (i < children.length - 1) currentY += V_GAP;
       }
 
       if (useBrace && childIds.length >= 2) {
@@ -177,14 +204,15 @@ export function layoutLogicChart(
             height: last.y + last.height - first.y,
           },
           style: {
-            stroke: '#888888',
+            stroke: '#6B7280',
+            strokeWidth: 2,
             openSide: config.direction === 'right' ? 'right' : 'left',
           },
         });
       }
     }
 
-    return Math.max(size.height, currentY - y);
+    return blockH;
   }
 
   layout(root, 0, 0);

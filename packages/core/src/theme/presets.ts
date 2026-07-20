@@ -157,6 +157,7 @@ export function listThemes(): Theme[] {
   return [...BUILTIN_THEMES];
 }
 
-export function getTheme(id: string): Theme {
+/** Builtin-only lookup; prefer `getTheme` from `./custom.js` for custom themes. */
+export function getBuiltinTheme(id: string): Theme {
   return BUILTIN_THEMES.find((t) => t.id === id) ?? BUILTIN_THEMES[0]!;
 }

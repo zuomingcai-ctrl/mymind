@@ -4,9 +4,11 @@ import { createDocument } from '../../model/factory.js';
 import { AddTopicCommand } from '../topic-commands.js';
 import {
   UpdateSheetStructureCommand,
+  UpdateStructureOptionsCommand,
   AddSheetCommand,
   DeleteSheetCommand,
   RenameSheetCommand,
+  ClearThemeUsagesCommand,
 } from '../sheet-commands.js';
 import {
   AddSummaryCommand,
@@ -33,6 +35,26 @@ describe('Phase 2 commands', () => {
     const d = cmd.execute(doc);
     expect(d.sheets[0]!.structure).toBe('tree-chart');
     expect(cmd.undo(d).sheets[0]!.structure).toBe('mindmap');
+  });
+
+  it('UpdateStructureOptionsCommand patches options', () => {
+    const doc = createDocument();
+    const sheetId = doc.sheets[0]!.id;
+    const cmd = new UpdateStructureOptionsCommand(sheetId, {
+      type: 'mindmap',
+      balanced: false,
+      direction: 'right',
+    });
+    const d = cmd.execute(doc);
+    expect(d.sheets[0]!.structureOptions).toEqual({
+      type: 'mindmap',
+      balanced: false,
+      direction: 'right',
+    });
+    expect(cmd.undo(d).sheets[0]!.structureOptions).toEqual({
+      type: 'mindmap',
+      balanced: true,
+    });
   });
 
   it('AddSheetCommand adds sheet', () => {
@@ -143,5 +165,25 @@ describe('Phase 2 commands', () => {
       topics: [topic],
     }).execute(d);
     expect(d.sheets[0]!.rootTopic.children.length).toBeGreaterThan(1);
+  });
+
+  it('ClearThemeUsagesCommand resets every sheet using the theme', () => {
+    let d = createDocument();
+    const a = d.sheets[0]!.id;
+    d = new AddSheetCommand('Sheet 2').execute(d);
+    const b = d.sheets[1]!.id;
+    d = {
+      ...d,
+      sheets: d.sheets.map((s) => ({
+        ...s,
+        canvasSettings: { ...s.canvasSettings, themeId: 'custom-gone' },
+      })),
+    };
+    const cmd = new ClearThemeUsagesCommand('custom-gone', 'default');
+    const next = cmd.execute(d);
+    expect(next.sheets.every((s) => s.canvasSettings.themeId === 'default')).toBe(true);
+    const undone = cmd.undo(next);
+    expect(undone.sheets.find((s) => s.id === a)!.canvasSettings.themeId).toBe('custom-gone');
+    expect(undone.sheets.find((s) => s.id === b)!.canvasSettings.themeId).toBe('custom-gone');
   });
 });

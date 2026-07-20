@@ -1,6 +1,7 @@
 // covers: TH-001
 import { describe, it, expect } from 'vitest';
-import { listThemes, getTheme } from '../presets.js';
+import { listThemes } from '../presets.js';
+import { getTheme } from '../custom.js';
 
 describe('themes', () => {
   it('lists at least 10 themes', () => {

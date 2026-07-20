@@ -1,7 +1,6 @@
 // covers: ST-008
 import type {
   ExtraShape,
-  LayoutEdge,
   LayoutNode,
   LayoutResult,
   MeasureFn,
@@ -11,13 +10,16 @@ import type {
 import { collectHidden, finalizeResult, LEVEL_GAP, V_GAP } from './utils.js';
 
 const NEST_INDENT = 48;
-const BRACE_W = 14;
+const BRACE_W = 18;
+const BRACE_PAD = 16;
 
 interface BraceConfig {
   /** Children grow to the right of their parent. */
   growRight: boolean;
   /** Brace sits between parent and children (opposite) or on the outer side (same). */
   partPosition: 'same' | 'opposite';
+  /** Which side of the root/group the brace glyph sits on. */
+  braceSide: 'left' | 'right';
 }
 
 function readConfig(options: StructureOptions): BraceConfig {
@@ -25,12 +27,11 @@ function readConfig(options: StructureOptions): BraceConfig {
   const partPosition =
     options.type === 'brace-map' ? (options.partPosition ?? 'opposite') : 'opposite';
 
-  // opposite: root and parts on opposite sides of the brace (classic).
-  // same: root and parts share a column; brace sits on braceSide of the group.
-  if (partPosition === 'opposite') {
-    return { growRight: braceSide === 'left', partPosition };
-  }
-  return { growRight: braceSide === 'right', partPosition };
+  return {
+    growRight: braceSide === 'right',
+    partPosition,
+    braceSide,
+  };
 }
 
 function subtreeHeight(topic: Topic, depth: number, hiddenIds: Set<string>, measure: MeasureFn): number {
@@ -57,34 +58,56 @@ function addBrace(
   if (childNodes.length === 0) return;
   const first = childNodes[0]!;
   const last = childNodes[childNodes.length - 1]!;
-  const braceTop = Math.min(first.y, parentNode.y);
-  const braceBottom = Math.max(last.y + last.height, parentNode.y + parentNode.height);
+  // Span the children column only — classic brace-map look.
+  const braceTop = first.y;
+  const braceBottom = last.y + last.height;
   const braceHeight = Math.max(braceBottom - braceTop, first.height);
 
   let braceX: number;
   let openSide: 'left' | 'right';
   if (config.partPosition === 'opposite') {
-    if (config.growRight) {
-      braceX = parentNode.x + parentNode.width + 24;
+    if (config.braceSide === 'right') {
+      const gapStart = parentNode.x + parentNode.width;
+      const gapEnd = Math.min(...childNodes.map((n) => n.x));
+      braceX = gapStart + (gapEnd - gapStart - BRACE_W) / 2;
       openSide = 'right';
     } else {
-      braceX = parentNode.x - 24 - BRACE_W;
+      const gapEnd = parentNode.x;
+      const gapStart = Math.max(...childNodes.map((n) => n.x + n.width));
+      braceX = gapStart + (gapEnd - gapStart - BRACE_W) / 2;
       openSide = 'left';
     }
-  } else if (config.growRight) {
-    // same + parts on right of brace → brace on left of group
-    braceX = Math.min(parentNode.x, ...childNodes.map((n) => n.x)) - 24 - BRACE_W;
-    openSide = 'right';
-  } else {
-    braceX = Math.max(parentNode.x + parentNode.width, ...childNodes.map((n) => n.x + n.width)) + 24;
+  } else if (config.braceSide === 'right') {
+    braceX =
+      Math.max(parentNode.x + parentNode.width, ...childNodes.map((n) => n.x + n.width)) +
+      BRACE_PAD;
     openSide = 'left';
+  } else {
+    braceX = Math.min(parentNode.x, ...childNodes.map((n) => n.x)) - BRACE_PAD - BRACE_W;
+    openSide = 'right';
   }
+
+  const stemFromX =
+    config.partPosition === 'opposite'
+      ? config.growRight
+        ? parentNode.x + parentNode.width
+        : parentNode.x
+      : openSide === 'right'
+        ? Math.min(parentNode.x, ...childNodes.map((n) => n.x))
+        : Math.max(parentNode.x + parentNode.width, ...childNodes.map((n) => n.x + n.width));
+  const stemFromY = parentNode.y + parentNode.height / 2;
 
   extraShapes.push({
     id,
     type: 'brace',
     bounds: { x: braceX, y: braceTop, width: BRACE_W, height: braceHeight },
-    style: { stroke: '#888888', openSide },
+    style: {
+      stroke: '#6B7280',
+      strokeWidth: 2,
+      openSide,
+      stemFromX,
+      stemFromY,
+    },
   });
 }
 
@@ -97,9 +120,7 @@ function layoutBraceSubtree(
   hiddenIds: Set<string>,
   measure: MeasureFn,
   nodes: Map<string, LayoutNode>,
-  edges: LayoutEdge[],
   extraShapes: ExtraShape[],
-  parentId?: string,
 ): number {
   if (hiddenIds.has(topic.id)) return 0;
 
@@ -129,42 +150,22 @@ function layoutBraceSubtree(
     depth,
   });
 
-  if (parentId) {
-    const parent = nodes.get(parentId)!;
-    edges.push({
-      id: `${parentId}-${topic.id}`,
-      from: parentId,
-      to: topic.id,
-      points: [
-        {
-          x: config.growRight ? parent.x + parent.width : parent.x,
-          y: parent.y + parent.height / 2,
-        },
-        {
-          x: config.growRight ? x : x + size.width,
-          y: nodeY + size.height / 2,
-        },
-      ],
-      type: 'tree',
-    });
-  }
-
   if (visible.length === 0) return blockH;
 
+  // Room for brace + stem between parent and parts.
+  const gap = config.partPosition === 'opposite' ? Math.max(LEVEL_GAP, BRACE_W + 48) : NEST_INDENT;
   const childX =
     config.partPosition === 'opposite'
       ? config.growRight
-        ? x + size.width + LEVEL_GAP
-        : x - LEVEL_GAP
-      : // same: children share column, slightly nested
-        config.growRight
+        ? x + size.width + gap
+        : x - gap
+      : config.growRight
         ? x + NEST_INDENT
         : x - NEST_INDENT;
 
   let cy = y;
   const childNodes: LayoutNode[] = [];
   for (const child of visible) {
-    // For opposite growLeft, child x is right-edge anchored
     const childSize = measure(child, depth + 1);
     const placedX =
       config.partPosition === 'opposite' && !config.growRight
@@ -182,9 +183,7 @@ function layoutBraceSubtree(
       hiddenIds,
       measure,
       nodes,
-      edges,
       extraShapes,
-      topic.id,
     );
     childNodes.push(nodes.get(child.id)!);
     cy += h + V_GAP;
@@ -201,12 +200,10 @@ export function layoutBraceMap(
 ): LayoutResult {
   const config = readConfig(options);
   const nodes = new Map<string, LayoutNode>();
-  const edges: LayoutEdge[] = [];
   const extraShapes: ExtraShape[] = [];
   const hiddenIds = collectHidden(root);
 
   const rootSize = measure(root, 0);
-  // Place root so opposite layouts have room on both sides.
   const rootX =
     config.partPosition === 'opposite'
       ? config.growRight
@@ -216,20 +213,8 @@ export function layoutBraceMap(
         ? 40
         : 300;
 
-  layoutBraceSubtree(
-    root,
-    0,
-    rootX,
-    0,
-    config,
-    hiddenIds,
-    measure,
-    nodes,
-    edges,
-    extraShapes,
-  );
+  layoutBraceSubtree(root, 0, rootX, 0, config, hiddenIds, measure, nodes, extraShapes);
 
-  // Ensure root exists even if empty
   if (!nodes.has(root.id)) {
     nodes.set(root.id, {
       id: root.id,
@@ -241,5 +226,6 @@ export function layoutBraceMap(
     });
   }
 
-  return finalizeResult(nodes, edges, extraShapes);
+  // Brace is the connector — no parent–child tree edges.
+  return finalizeResult(nodes, [], extraShapes);
 }

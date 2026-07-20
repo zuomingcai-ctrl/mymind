@@ -199,6 +199,10 @@ function resolveLineType(sheet: Sheet): EdgeStyle['lineType'] {
   if (opts.type === 'logic-chart') {
     return opts.lineStyle === 'polyline' ? 'polyline' : 'curve';
   }
+  // Fishbone bones/ribs are geometric straight segments (Ishikawa), never theme curves.
+  if (opts.type === 'fishbone') {
+    return 'straight';
+  }
   return getTheme(sheet.canvasSettings.themeId).edge.lineType;
 }
 

@@ -648,6 +648,7 @@ function resolveEndpointRect(
   };
 }
 
+/** Height of a top-down tree: siblings share a row, so height follows the tallest child. */
 export function subtreeHeight(
   topic: Topic,
   depth: number,
@@ -655,13 +656,14 @@ export function subtreeHeight(
 ): number {
   if (ctx.hiddenIds.has(topic.id)) return 0;
   const size = ctx.measure(topic, depth);
-  let h = size.height;
-  if (topic.collapsed) return h;
-  for (const child of topic.children) {
-    if (ctx.hiddenIds.has(child.id)) continue;
-    h += ctx.vGap + subtreeHeight(child, depth + 1, ctx);
+  if (topic.collapsed) return size.height;
+  const visible = topic.children.filter((c) => !ctx.hiddenIds.has(c.id));
+  if (visible.length === 0) return size.height;
+  let maxChild = 0;
+  for (const child of visible) {
+    maxChild = Math.max(maxChild, subtreeHeight(child, depth + 1, ctx));
   }
-  return h;
+  return size.height + ctx.vGap + maxChild;
 }
 
 export function layoutSubtreeWidth(
@@ -681,10 +683,13 @@ export function layoutSubtreeWidth(
   return Math.max(size.width, total);
 }
 
+/**
+ * Top-down tree: siblings sit on one horizontal row; `leftX` is the subtree's left edge.
+ */
 export function layoutTreeVertical(
   topic: Topic,
   depth: number,
-  x: number,
+  leftX: number,
   y: number,
   ctx: TreeLayoutContext,
   parentId?: string,
@@ -692,9 +697,12 @@ export function layoutTreeVertical(
   if (ctx.hiddenIds.has(topic.id)) return 0;
 
   const size = ctx.measure(topic, depth);
+  const spanW = layoutSubtreeWidth(topic, depth, ctx);
+  const nodeX = leftX + (spanW - size.width) / 2;
+
   ctx.nodes.set(topic.id, {
     id: topic.id,
-    x,
+    x: nodeX,
     y,
     width: size.width,
     height: size.height,
@@ -706,7 +714,7 @@ export function layoutTreeVertical(
     const parent = ctx.nodes.get(parentId)!;
     const fromX = parent.x + parent.width / 2;
     const fromY = parent.y + parent.height;
-    const toX = x + size.width / 2;
+    const toX = nodeX + size.width / 2;
     const toY = y;
     ctx.edges.push({
       id: `${parentId}-${topic.id}`,
@@ -717,20 +725,27 @@ export function layoutTreeVertical(
     });
   }
 
-  let currentY = y + size.height + ctx.vGap;
-  for (const child of topic.children) {
-    if (ctx.hiddenIds.has(child.id)) continue;
-    const childWidth = layoutSubtreeWidth(child, depth + 1, ctx);
-    layoutTreeVertical(
-      child,
-      depth + 1,
-      x + (size.width - childWidth) / 2,
-      currentY,
-      ctx,
-      topic.id,
-    );
-    currentY += subtreeHeight(child, depth + 1, ctx) + ctx.vGap;
+  if (topic.collapsed) return spanW;
+
+  const visible = topic.children.filter((c) => !ctx.hiddenIds.has(c.id));
+  if (visible.length === 0) return spanW;
+
+  let childrenW = 0;
+  const childWidths = visible.map((c) => {
+    const w = layoutSubtreeWidth(c, depth + 1, ctx);
+    childrenW += w;
+    return w;
+  });
+  childrenW += H_GAP * (visible.length - 1);
+
+  const childY = y + size.height + ctx.vGap;
+  let childLeft = leftX + (spanW - childrenW) / 2;
+  for (let i = 0; i < visible.length; i++) {
+    const child = visible[i]!;
+    const cw = childWidths[i]!;
+    layoutTreeVertical(child, depth + 1, childLeft, childY, ctx, topic.id);
+    childLeft += cw + H_GAP;
   }
 
-  return size.width;
+  return spanW;
 }
