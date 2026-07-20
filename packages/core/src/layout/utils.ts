@@ -209,6 +209,16 @@ function layoutBoundary(
   };
 }
 
+/** Tree/org grow vertically; only those may put the summary arc above/below the range. */
+function summaryPrefersVerticalArc(sheet: Sheet): boolean {
+  const t = sheet.structure;
+  if (t === 'tree-chart' || t === 'org-chart') return true;
+  if (t === 'timeline' && sheet.structureOptions.type === 'timeline') {
+    return sheet.structureOptions.axis === 'vertical';
+  }
+  return false;
+}
+
 /** Merge layout bounds of a topic and its visible descendants (for summary envelope). */
 function mergeTopicSubtreeBounds(
   topic: Topic,
@@ -273,7 +283,11 @@ function layoutSummary(
   let branchSide: 'left' | 'right' = 'right';
 
   // Place the arc on the side facing away from the parent (SM-003).
-  if (Math.abs(dx) >= Math.abs(dy)) {
+  // Horizontal structures (mindmap / logic-chart / …) must stay left/right even when
+  // the covered range sits far above/below the parent — otherwise top branches get
+  // a summary parked over the node (XMind-style is always outward beside the range).
+  const placeVertical = summaryPrefersVerticalArc(sheet) && Math.abs(dy) > Math.abs(dx);
+  if (!placeVertical) {
     const outward = dx >= 0 ? 1 : -1;
     branchSide = outward > 0 ? 'right' : 'left';
     const arcX = outward > 0 ? bounds.x + bounds.width + 20 : bounds.x - 20;

@@ -254,6 +254,8 @@ const editingRelationship = ref<{
   height: number;
   title: string;
 } | null>(null);
+/** Draft text while the relationship label editor is open (v-model target). */
+const relationshipDraft = ref('');
 const editingMarker = ref<{
   topicId: string;
   markerId: string;
@@ -522,7 +524,7 @@ function startEditingMarker(payload: {
   top: number;
 }) {
   closeEditor();
-  editingRelationship.value = null;
+  commitRelationshipTitle();
   editingMarker.value = payload;
 }
 
@@ -553,6 +555,7 @@ function onRemoveMarker() {
 
 function applyTopicSelect(id: string | null, mods: SelectionModifiers = {}) {
   closeEditor();
+  commitRelationshipTitle();
   editingMarker.value = null;
   if (id && activeSheet.value) {
     const summary = activeSheet.value.summaries.find((s) => s.summaryTopicId === id);
@@ -857,8 +860,10 @@ function onInsertRelationship() {
 }
 
 function onSelectStructure(payload: { kind: StructureSelectionKind; id: string } | null) {
+  // Commit before clearing: blank clicks null out selection first, and blur would
+  // otherwise see editingRelationship already null and drop the typed title.
+  commitRelationshipTitle();
   selectedStructure.value = payload;
-  editingRelationship.value = null;
   if (payload) {
     selectedDecorationId.value = null;
     closeEditor();
@@ -892,20 +897,19 @@ function startEditingRelationship(payload: {
 }) {
   closeEditor();
   editingMarker.value = null;
+  relationshipDraft.value = payload.title;
   editingRelationship.value = payload;
 }
 
-function commitRelationshipTitle(next: string) {
-  if (!activeSheet.value || !editingRelationship.value) return;
-  const title = next.trim() || '关联';
-  dispatch(
-    new UpdateRelationshipTitleCommand(
-      activeSheet.value.id,
-      editingRelationship.value.id,
-      title,
-    ),
-  );
+function commitRelationshipTitle() {
+  const editing = editingRelationship.value;
+  if (!activeSheet.value || !editing) return;
+  const { id, title: prev } = editing;
+  const title = relationshipDraft.value.trim() || prev;
   editingRelationship.value = null;
+  if (title !== prev) {
+    dispatch(new UpdateRelationshipTitleCommand(activeSheet.value.id, id, title));
+  }
   nextTick(() => focusKeyboardCapture());
 }
 
@@ -1878,6 +1882,7 @@ onUnmounted(() => {
     />
     <input
       v-if="editingRelationship && !zenActive"
+      v-model="relationshipDraft"
       class="rel-title-editor"
       :style="{
         left: editingRelationship.left + 'px',
@@ -1885,11 +1890,12 @@ onUnmounted(() => {
         width: editingRelationship.width + 'px',
         height: editingRelationship.height + 'px',
       }"
-      :value="editingRelationship.title"
       autofocus
-      @keydown.enter.prevent="commitRelationshipTitle(($event.target as HTMLInputElement).value)"
+      @mousedown.stop
+      @click.stop
+      @keydown.enter.prevent="commitRelationshipTitle"
       @keydown.escape.prevent="cancelRelationshipEdit"
-      @blur="commitRelationshipTitle(($event.target as HTMLInputElement).value)"
+      @blur="commitRelationshipTitle"
     />
   </div>
 </template>

@@ -206,6 +206,50 @@ describe('summary & relationship layout fixes', () => {
     }
   });
 
+  it('mindmap keeps summary beside top branches even when |dy| > |dx|', () => {
+    let d = createDocument();
+    const sheetId = d.sheets[0]!.id;
+    const rootId = d.sheets[0]!.rootTopic.id;
+    d = {
+      ...d,
+      sheets: d.sheets.map((s) =>
+        s.id === sheetId
+          ? {
+              ...s,
+              structureOptions: { type: 'mindmap' as const, balanced: false, direction: 'right' as const },
+            }
+          : s,
+      ),
+    };
+    // Tall right-side stack so the top pair sits far above the parent center.
+    for (const title of ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']) {
+      d = new AddTopicCommand(sheetId, rootId, title).execute(d);
+    }
+    const ids = d.sheets[0]!.rootTopic.children.map((c) => c.id);
+    d = new AddSummaryCommand(sheetId, rootId, [ids[0]!, ids[1]!]).execute(d);
+
+    const sheet = d.sheets[0]!;
+    const layout = createDefaultLayoutRegistry().layout(sheet, createMeasureFn());
+    const summaryId = sheet.summaries[0]!.summaryTopicId;
+    const summaryNode = layout.nodes.get(summaryId)!;
+    const a = layout.nodes.get(ids[0]!)!;
+    const b = layout.nodes.get(ids[1]!)!;
+    const rangeTop = Math.min(a.y, b.y);
+    const rangeBottom = Math.max(a.y + a.height, b.y + b.height);
+    const rangeRight = Math.max(a.x + a.width, b.x + b.width);
+    const midY = (rangeTop + rangeBottom) / 2;
+
+    // Must sit to the right of the range, vertically aligned — not above it.
+    expect(summaryNode.x).toBeGreaterThan(rangeRight);
+    expect(summaryNode.y + summaryNode.height).toBeGreaterThan(rangeTop);
+    expect(summaryNode.y).toBeLessThan(rangeBottom);
+    expect(Math.abs(summaryNode.y + summaryNode.height / 2 - midY)).toBeLessThan(2);
+
+    const edge = layout.edges.find((e) => e.type === 'summary')!;
+    expect(edge.points[0]!.x).toBe(edge.points[2]!.x);
+    expect(edge.points[0]!.y).toBeLessThan(edge.points[2]!.y);
+  });
+
   it('UpdateTopicTitleCommand updates floating summary topic', () => {
     let d = createDocument();
     const sheetId = d.sheets[0]!.id;
