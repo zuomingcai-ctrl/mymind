@@ -318,7 +318,6 @@ function drawTopicNode(
       ctx.strokeStyle = '#4A90D9';
       ctx.lineWidth = 2;
       ctx.strokeRect(node.x - 2, node.y - 2, node.width + 4, node.height + 4);
-      drawTopicWidthHandles(ctx, node);
     }
     return;
   }
@@ -356,7 +355,6 @@ function drawTopicNode(
     ctx.lineWidth = 2;
     roundRect(ctx, node.x - 2, node.y - 2, node.width + 4, node.height + 4, 8);
     ctx.stroke();
-    drawTopicWidthHandles(ctx, node);
   }
 
   drawTopicAdornments(
@@ -369,24 +367,6 @@ function drawTopicNode(
     content,
     merged.textAlign ?? 'center',
   );
-}
-
-function drawTopicWidthHandles(
-  ctx: CanvasRenderingContext2D,
-  node: { x: number; y: number; width: number; height: number },
-) {
-  const zoom = Math.max(props.viewport.zoom, 0.01);
-  const hw = 5 / zoom;
-  const hh = 10 / zoom;
-  const midY = node.y + node.height / 2;
-  ctx.fillStyle = '#4A90D9';
-  ctx.strokeStyle = '#FFFFFF';
-  ctx.lineWidth = 1 / zoom;
-  for (const x of [node.x, node.x + node.width]) {
-    roundRect(ctx, x - hw / 2, midY - hh / 2, hw, hh, 1 / zoom);
-    ctx.fill();
-    ctx.stroke();
-  }
 }
 
 function drawTopicAdornments(
@@ -995,6 +975,24 @@ function onMouseDown(event: MouseEvent) {
     if (world) {
       const layout = registry.layout(sheet, measure);
 
+      // Fold control beats width resize when both sit on the child-facing edge
+      {
+        const collapseHit = hitTestCollapseButton(world, sheet, layout);
+        if (collapseHit) {
+          suppressNextClick = true;
+          emit('select-structure', null);
+          emit('select', {
+            id: collapseHit.topicId,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+          });
+          emit('toggle-collapse', collapseHit.topicId);
+          event.preventDefault();
+          return;
+        }
+      }
+
       // Width handles on selected topics (before pan / topic-drag)
       const widthHit = hitTestTopicWidthHandle(world, layout);
       if (widthHit) {
@@ -1075,24 +1073,6 @@ function onMouseDown(event: MouseEvent) {
       if (markerHit) {
         emit('select-structure', null);
         return;
-      }
-
-      // Fold control sits outside the topic box
-      {
-        const collapseHit = hitTestCollapseButton(world, sheet, layout);
-        if (collapseHit) {
-          suppressNextClick = true;
-          emit('select-structure', null);
-          emit('select', {
-            id: collapseHit.topicId,
-            shiftKey: false,
-            ctrlKey: false,
-            metaKey: false,
-          });
-          emit('toggle-collapse', collapseHit.topicId);
-          event.preventDefault();
-          return;
-        }
       }
 
       // Callout bubbles sit above topics; pick before topic so they remain clickable

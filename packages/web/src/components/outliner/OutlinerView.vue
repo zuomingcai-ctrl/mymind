@@ -108,6 +108,8 @@ const summaryRows = computed<Row[]>(() => {
 
 const localTitles = reactive<Record<string, string>>({});
 const dragId = reactive({ id: null as string | null });
+/** UI-only: collapse entire outliner sections (概要 / 主题). */
+const sectionCollapsed = reactive({ summary: false, main: false });
 
 watch(
   () => props.sheet?.id,
@@ -115,8 +117,14 @@ watch(
     for (const key of Object.keys(localTitles)) {
       delete localTitles[key];
     }
+    sectionCollapsed.summary = false;
+    sectionCollapsed.main = false;
   },
 );
+
+function toggleSection(section: 'summary' | 'main') {
+  sectionCollapsed[section] = !sectionCollapsed[section];
+}
 
 function onRowClick(row: Row, event: MouseEvent) {
   emit('select', {
@@ -217,39 +225,111 @@ function onDragOver(event: DragEvent) {
         role="group"
         aria-label="概要"
       >
-        <div class="outliner-section-label">概要</div>
-        <div
-          v-for="row in summaryRows"
-          :key="`summary-${row.id}`"
-          class="outliner-row summary-row"
-          role="treeitem"
-          :aria-selected="selectedSet.has(row.id)"
-          :aria-level="row.depth + 1"
-          :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
-          :class="{
-            selected: selectedSet.has(row.id),
-            'summary-root': row.isSummaryRoot,
-          }"
-          :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
-          :draggable="false"
-          @click="onRowClick(row, $event)"
+        <button
+          type="button"
+          class="outliner-section-label"
+          :aria-expanded="!sectionCollapsed.summary"
+          @click="toggleSection('summary')"
         >
-          <el-button
-            v-if="row.hasChildren"
-            class="collapse-btn"
-            text
-            size="small"
-            :icon="row.collapsed ? ArrowRight : ArrowDown"
-            @click="toggleCollapse(row, $event)"
-          />
-          <span v-else class="collapse-spacer" />
-          <span
-            v-if="row.isSummaryRoot"
-            class="summary-glyph"
-            aria-hidden="true"
-            title="概要"
-          >⌒</span>
-          <div class="outliner-title-block">
+          <el-icon class="section-chevron" :size="12">
+            <ArrowRight v-if="sectionCollapsed.summary" />
+            <ArrowDown v-else />
+          </el-icon>
+          <span>概要</span>
+        </button>
+        <template v-if="!sectionCollapsed.summary">
+          <div
+            v-for="row in summaryRows"
+            :key="`summary-${row.id}`"
+            class="outliner-row summary-row"
+            role="treeitem"
+            :aria-selected="selectedSet.has(row.id)"
+            :aria-level="row.depth + 1"
+            :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
+            :class="{
+              selected: selectedSet.has(row.id),
+              'summary-root': row.isSummaryRoot,
+            }"
+            :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
+            :draggable="false"
+            @click="onRowClick(row, $event)"
+          >
+            <el-button
+              v-if="row.hasChildren"
+              class="collapse-btn"
+              text
+              size="small"
+              :icon="row.collapsed ? ArrowRight : ArrowDown"
+              @click="toggleCollapse(row, $event)"
+            />
+            <span v-else class="collapse-spacer" />
+            <span
+              v-if="row.isSummaryRoot"
+              class="summary-glyph"
+              aria-hidden="true"
+              title="概要"
+            >⌒</span>
+            <div class="outliner-title-block">
+              <el-input
+                :model-value="displayTitle(row)"
+                class="outliner-input"
+                size="small"
+                :data-topic-id="row.id"
+                @update:model-value="(v: string) => onInput(row, v)"
+                @blur="onBlur(row)"
+                @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
+                @click="(e: MouseEvent) => onInputClick(row, e)"
+              />
+              <span v-if="row.rangeHint" class="summary-range">涵盖 {{ row.rangeHint }}</span>
+            </div>
+            <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
+              {{ row.labels }}
+            </el-tag>
+          </div>
+        </template>
+      </div>
+
+      <div class="outliner-section outliner-section--main" role="group" aria-label="主题">
+        <button
+          type="button"
+          class="outliner-section-label"
+          :class="{ 'outliner-section-label--main': summaryRows.length > 0 }"
+          :aria-expanded="!sectionCollapsed.main"
+          @click="toggleSection('main')"
+        >
+          <el-icon class="section-chevron" :size="12">
+            <ArrowRight v-if="sectionCollapsed.main" />
+            <ArrowDown v-else />
+          </el-icon>
+          <span>主题</span>
+        </button>
+
+        <template v-if="!sectionCollapsed.main">
+          <div
+            v-for="row in mainRows"
+            :key="row.id"
+            class="outliner-row"
+            role="treeitem"
+            :aria-selected="selectedSet.has(row.id)"
+            :aria-level="row.depth + 1"
+            :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
+            :class="{ selected: selectedSet.has(row.id) }"
+            :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
+            draggable="true"
+            @click="onRowClick(row, $event)"
+            @dragstart="onDragStart(row, $event)"
+            @dragover="onDragOver"
+            @drop="onDrop(row, $event)"
+          >
+            <el-button
+              v-if="row.hasChildren"
+              class="collapse-btn"
+              text
+              size="small"
+              :icon="row.collapsed ? ArrowRight : ArrowDown"
+              @click="toggleCollapse(row, $event)"
+            />
+            <span v-else class="collapse-spacer" />
             <el-input
               :model-value="displayTitle(row)"
               class="outliner-input"
@@ -260,59 +340,11 @@ function onDragOver(event: DragEvent) {
               @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
               @click="(e: MouseEvent) => onInputClick(row, e)"
             />
-            <span v-if="row.rangeHint" class="summary-range">涵盖 {{ row.rangeHint }}</span>
+            <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
+              {{ row.labels }}
+            </el-tag>
           </div>
-          <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
-            {{ row.labels }}
-          </el-tag>
-        </div>
-      </div>
-
-      <div
-        v-if="summaryRows.length"
-        class="outliner-section-label outliner-section-label--main"
-      >
-        主题
-      </div>
-
-      <div
-        v-for="row in mainRows"
-        :key="row.id"
-        class="outliner-row"
-        role="treeitem"
-        :aria-selected="selectedSet.has(row.id)"
-        :aria-level="row.depth + 1"
-        :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
-        :class="{ selected: selectedSet.has(row.id) }"
-        :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
-        draggable="true"
-        @click="onRowClick(row, $event)"
-        @dragstart="onDragStart(row, $event)"
-        @dragover="onDragOver"
-        @drop="onDrop(row, $event)"
-      >
-        <el-button
-          v-if="row.hasChildren"
-          class="collapse-btn"
-          text
-          size="small"
-          :icon="row.collapsed ? ArrowRight : ArrowDown"
-          @click="toggleCollapse(row, $event)"
-        />
-        <span v-else class="collapse-spacer" />
-        <el-input
-          :model-value="displayTitle(row)"
-          class="outliner-input"
-          size="small"
-          :data-topic-id="row.id"
-          @update:model-value="(v: string) => onInput(row, v)"
-          @blur="onBlur(row)"
-          @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
-          @click="(e: MouseEvent) => onInputClick(row, e)"
-        />
-        <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
-          {{ row.labels }}
-        </el-tag>
+        </template>
       </div>
     </el-scrollbar>
   </aside>
@@ -344,15 +376,35 @@ function onDragOver(event: DragEvent) {
   padding-bottom: 4px;
   margin-bottom: 2px;
 }
+.outliner-section--main {
+  border-bottom: none;
+  margin-bottom: 0;
+}
 .outliner-section-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+  margin: 0;
   padding: 8px 12px 4px;
+  border: none;
+  background: transparent;
+  font: inherit;
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--el-text-color-secondary);
+  cursor: pointer;
+  text-align: left;
+}
+.outliner-section-label:hover {
+  color: var(--el-text-color-regular);
 }
 .outliner-section-label--main {
   padding-top: 6px;
+}
+.section-chevron {
+  flex-shrink: 0;
 }
 .outliner-row {
   display: flex;

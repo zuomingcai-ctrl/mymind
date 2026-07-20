@@ -1573,7 +1573,6 @@ function dispatchAddTopic(cmd: AddTopicCommand) {
     nextTick(() => {
       syncKeyboardCapturePosition();
       focusKeyboardCapture();
-      openEditorForSelection();
     });
   }
 }
