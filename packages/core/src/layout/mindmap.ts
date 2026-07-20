@@ -1,5 +1,6 @@
 import type {
   LayoutEdge,
+  LayoutExtras,
   LayoutNode,
   LayoutResult,
   MeasureFn,
@@ -8,12 +9,14 @@ import type {
 } from '../model/types.js';
 import { buildMindmapCurvePoints } from './edge-paths.js';
 import {
+  buildSummaryReserves,
   collectHidden,
   finalizeResult,
   flipLayoutVertical,
   layoutSubtreeWidth,
   layoutTreeVertical,
   LEVEL_GAP,
+  type SummaryReserve,
   TreeLayoutContext,
   V_GAP,
 } from './utils.js';
@@ -21,7 +24,12 @@ import {
 export { layoutLogicChart } from './logic-chart.js';
 
 /** Height of a mindmap subtree: parent is centered among children, not stacked above them. */
-function mindmapSubtreeHeight(topic: Topic, depth: number, ctx: TreeLayoutContext): number {
+function mindmapSubtreeHeight(
+  topic: Topic,
+  depth: number,
+  ctx: TreeLayoutContext,
+  reserves: SummaryReserve[],
+): number {
   if (ctx.hiddenIds.has(topic.id)) return 0;
   const size = ctx.measure(topic, depth);
   if (topic.collapsed) return size.height;
@@ -29,22 +37,70 @@ function mindmapSubtreeHeight(topic: Topic, depth: number, ctx: TreeLayoutContex
   const visible = topic.children.filter((c) => !ctx.hiddenIds.has(c.id));
   if (visible.length === 0) return size.height;
 
-  let childrenH = 0;
-  for (let i = 0; i < visible.length; i++) {
-    childrenH += mindmapSubtreeHeight(visible[i]!, depth + 1, ctx);
-    if (i < visible.length - 1) childrenH += ctx.vGap;
-  }
-  return Math.max(size.height, childrenH);
+  return siblingStackPlan(topic.id, visible, depth + 1, ctx, reserves).totalHeight;
 }
 
-function sideStackHeight(children: Topic[], depth: number, ctx: TreeLayoutContext): number {
-  if (children.length === 0) return 0;
-  let h = 0;
-  for (let i = 0; i < children.length; i++) {
-    h += mindmapSubtreeHeight(children[i]!, depth, ctx);
-    if (i < children.length - 1) h += ctx.vGap;
+/**
+ * Natural sibling heights plus gaps, with summary reserves applied by widening
+ * gaps (so the placed node envelope actually grows — not empty band padding).
+ */
+interface SiblingStackPlan {
+  heights: number[];
+  /** Gap after sibling i (length n-1). */
+  gaps: number[];
+  leadingPad: number;
+  trailingPad: number;
+  totalHeight: number;
+}
+
+function siblingStackPlan(
+  parentId: string,
+  siblings: Topic[],
+  depth: number,
+  ctx: TreeLayoutContext,
+  reserves: SummaryReserve[],
+): SiblingStackPlan {
+  const heights = siblings.map((s) => mindmapSubtreeHeight(s, depth, ctx, reserves));
+  const gaps =
+    siblings.length > 1 ? heights.slice(0, -1).map(() => ctx.vGap) : [];
+  let leadingPad = 0;
+  let trailingPad = 0;
+
+  for (const reserve of reserves) {
+    if (reserve.parentTopicId !== parentId) continue;
+    const i = siblings.findIndex((c) => c.id === reserve.startId);
+    const j = siblings.findIndex((c) => c.id === reserve.endId);
+    if (i < 0 || j < 0) continue;
+    const lo = Math.min(i, j);
+    const hi = Math.max(i, j);
+
+    let span = 0;
+    for (let k = lo; k <= hi; k++) span += heights[k]!;
+    for (let k = lo; k < hi; k++) span += gaps[k]!;
+
+    if (reserve.minRangeHeight <= span) continue;
+    const extra = reserve.minRangeHeight - span;
+
+    if (hi > lo) {
+      const nGaps = hi - lo;
+      for (let k = lo; k < hi; k++) gaps[k]! += extra / nGaps;
+    } else {
+      // Single-topic range: push neighbors apart so overflowing summary children fit.
+      const half = extra / 2;
+      if (lo > 0) gaps[lo - 1]! += half;
+      else leadingPad += half;
+      if (hi < siblings.length - 1) gaps[hi]! += half;
+      else trailingPad += half;
+    }
   }
-  return h;
+
+  let totalHeight = leadingPad + trailingPad;
+  for (let i = 0; i < heights.length; i++) {
+    totalHeight += heights[i]!;
+    if (i < gaps.length) totalHeight += gaps[i]!;
+  }
+
+  return { heights, gaps, leadingPad, trailingPad, totalHeight };
 }
 
 function connectMindmapEdge(
@@ -73,6 +129,7 @@ export function layoutMindmap(
   root: Topic,
   options: StructureOptions,
   measure: MeasureFn,
+  extras?: LayoutExtras,
 ): LayoutResult {
   const balanced = options.type === 'mindmap' ? options.balanced : true;
   const direction =
@@ -81,6 +138,12 @@ export function layoutMindmap(
   const edges: LayoutEdge[] = [];
   const hiddenIds = collectHidden(root);
   const ctx: TreeLayoutContext = { nodes, edges, measure, hiddenIds, vGap: V_GAP };
+  const reserves = buildSummaryReserves(
+    root,
+    extras?.summaries ?? [],
+    extras?.floatingTopics ?? [],
+    measure,
+  );
 
   const rootSize = measure(root, 0);
   const children = root.children.filter((c) => !hiddenIds.has(c.id));
@@ -101,9 +164,9 @@ export function layoutMindmap(
     rightChildren = children;
   }
 
-  const leftH = sideStackHeight(leftChildren, 1, ctx);
-  const rightH = sideStackHeight(rightChildren, 1, ctx);
-  const contentH = Math.max(leftH, rightH, rootSize.height);
+  const leftPlan = siblingStackPlan(root.id, leftChildren, 1, ctx, reserves);
+  const rightPlan = siblingStackPlan(root.id, rightChildren, 1, ctx, reserves);
+  const contentH = Math.max(leftPlan.totalHeight, rightPlan.totalHeight, rootSize.height);
 
   nodes.set(root.id, {
     id: root.id,
@@ -116,23 +179,58 @@ export function layoutMindmap(
 
   if (children.length === 0) return finalizeResult(nodes, edges);
 
-  let leftY = (contentH - leftH) / 2;
-  for (const child of leftChildren) {
-    const h = mindmapSubtreeHeight(child, 1, ctx);
-    placeMindmapBranch(child, 1, -LEVEL_GAP, leftY, h, ctx, 'left');
-    connectMindmapEdge(edges, nodes, root.id, child.id, 'left');
-    leftY += h + V_GAP;
-  }
-
-  let rightY = (contentH - rightH) / 2;
-  for (const child of rightChildren) {
-    const h = mindmapSubtreeHeight(child, 1, ctx);
-    placeMindmapBranch(child, 1, rootSize.width + LEVEL_GAP, rightY, h, ctx, 'right');
-    connectMindmapEdge(edges, nodes, root.id, child.id, 'right');
-    rightY += h + V_GAP;
-  }
+  placeSiblingSide(
+    leftChildren,
+    leftPlan,
+    (contentH - leftPlan.totalHeight) / 2,
+    -LEVEL_GAP,
+    1,
+    ctx,
+    'left',
+    reserves,
+    root.id,
+    edges,
+    nodes,
+  );
+  placeSiblingSide(
+    rightChildren,
+    rightPlan,
+    (contentH - rightPlan.totalHeight) / 2,
+    rootSize.width + LEVEL_GAP,
+    1,
+    ctx,
+    'right',
+    reserves,
+    root.id,
+    edges,
+    nodes,
+  );
 
   return finalizeResult(nodes, edges);
+}
+
+function placeSiblingSide(
+  children: Topic[],
+  plan: SiblingStackPlan,
+  topY: number,
+  x: number,
+  depth: number,
+  ctx: TreeLayoutContext,
+  side: 'left' | 'right',
+  reserves: SummaryReserve[],
+  parentId: string,
+  edges: LayoutEdge[],
+  nodes: Map<string, LayoutNode>,
+): void {
+  let y = topY + plan.leadingPad;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i]!;
+    const h = plan.heights[i]!;
+    placeMindmapBranch(child, depth, x, y, h, ctx, side, reserves);
+    connectMindmapEdge(edges, nodes, parentId, child.id, side);
+    y += h;
+    if (i < plan.gaps.length) y += plan.gaps[i]!;
+  }
 }
 
 /**
@@ -140,7 +238,7 @@ export function layoutMindmap(
  * creates edges from this node to its children after this node is positioned.
  *
  * @param topY - top of the vertical band allocated to this subtree
- * @param bandH - height of that band (from mindmapSubtreeHeight)
+ * @param bandH - height of that band
  */
 function placeMindmapBranch(
   topic: Topic,
@@ -150,6 +248,7 @@ function placeMindmapBranch(
   bandH: number,
   ctx: TreeLayoutContext,
   side: 'left' | 'right',
+  reserves: SummaryReserve[],
 ): void {
   if (ctx.hiddenIds.has(topic.id)) return;
   const size = ctx.measure(topic, depth);
@@ -170,13 +269,15 @@ function placeMindmapBranch(
     return;
   }
 
-  const childrenH = sideStackHeight(visible, depth + 1, ctx);
-  let childY = topY + (bandH - childrenH) / 2;
-  for (const child of visible) {
-    const h = mindmapSubtreeHeight(child, depth + 1, ctx);
+  const plan = siblingStackPlan(topic.id, visible, depth + 1, ctx, reserves);
+  let childY = topY + (bandH - plan.totalHeight) / 2 + plan.leadingPad;
+  for (let i = 0; i < visible.length; i++) {
+    const child = visible[i]!;
+    const h = plan.heights[i]!;
     const childX = side === 'left' ? nodeX - LEVEL_GAP : nodeX + size.width + LEVEL_GAP;
-    placeMindmapBranch(child, depth + 1, childX, childY, h, ctx, side);
-    childY += h + V_GAP;
+    placeMindmapBranch(child, depth + 1, childX, childY, h, ctx, side, reserves);
+    childY += h;
+    if (i < plan.gaps.length) childY += plan.gaps[i]!;
   }
 
   const first = ctx.nodes.get(visible[0]!.id)!;

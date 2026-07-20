@@ -334,15 +334,81 @@ function layoutSummary(
   return { edges: outEdges };
 }
 
-function summarySubtreeHeight(topic: Topic, depth: number, measure: MeasureFn): number {
+/** Height of a floating topic tree (summary topic + visible descendants). */
+export function floatingTopicTreeHeight(
+  topic: Topic,
+  depth: number,
+  measure: MeasureFn,
+): number {
   const size = measure(topic, depth);
   if (topic.collapsed || topic.children.length === 0) return size.height;
   let h = 0;
   for (let i = 0; i < topic.children.length; i++) {
-    h += summarySubtreeHeight(topic.children[i]!, depth + 1, measure);
+    h += floatingTopicTreeHeight(topic.children[i]!, depth + 1, measure);
     if (i < topic.children.length - 1) h += V_GAP;
   }
   return Math.max(size.height, h);
+}
+
+/**
+ * Vertical span of a summary topic's child stack (centered on the summary node).
+ * Main-tree ranges must be at least this tall so adjacent summaries do not collide.
+ */
+export function summaryChildrenStackHeight(
+  topic: Topic,
+  depth: number,
+  measure: MeasureFn,
+): number {
+  if (topic.collapsed || topic.children.length === 0) return 0;
+  let h = 0;
+  for (let i = 0; i < topic.children.length; i++) {
+    h += floatingTopicTreeHeight(topic.children[i]!, depth + 1, measure);
+    if (i < topic.children.length - 1) h += V_GAP;
+  }
+  return h;
+}
+
+/** Min vertical space a summary's covered sibling range must occupy in the main tree. */
+export interface SummaryReserve {
+  parentTopicId: string;
+  startId: string;
+  endId: string;
+  minRangeHeight: number;
+}
+
+export function buildSummaryReserves(
+  root: Topic,
+  summaries: Summary[],
+  floatingTopics: Topic[],
+  measure: MeasureFn,
+): SummaryReserve[] {
+  const floatingById = new Map(floatingTopics.map((t) => [t.id, t]));
+  const reserves: SummaryReserve[] = [];
+  for (const summary of summaries) {
+    const topic = floatingById.get(summary.summaryTopicId);
+    if (!topic) continue;
+    const parentDepth = findTopicDepth(root, summary.parentTopicId);
+    if (parentDepth == null) continue;
+    const depth = parentDepth + 1;
+    const minRangeHeight = summaryChildrenStackHeight(topic, depth, measure);
+    if (minRangeHeight <= 0) continue;
+    reserves.push({
+      parentTopicId: summary.parentTopicId,
+      startId: summary.topicRange[0],
+      endId: summary.topicRange[1],
+      minRangeHeight,
+    });
+  }
+  return reserves;
+}
+
+function findTopicDepth(root: Topic, id: string, depth = 0): number | null {
+  if (root.id === id) return depth;
+  for (const child of root.children) {
+    const found = findTopicDepth(child, id, depth + 1);
+    if (found != null) return found;
+  }
+  return null;
 }
 
 /** Place children of a summary topic outward (same side as the summary arc). */
@@ -358,13 +424,13 @@ function layoutSummaryTopicChildren(
   const children = summaryTopic.children;
   let childrenH = 0;
   for (let i = 0; i < children.length; i++) {
-    childrenH += summarySubtreeHeight(children[i]!, depth, measure);
+    childrenH += floatingTopicTreeHeight(children[i]!, depth, measure);
     if (i < children.length - 1) childrenH += V_GAP;
   }
   const midY = summaryNode.y + summaryNode.height / 2;
   let childY = midY - childrenH / 2;
   for (const child of children) {
-    const h = summarySubtreeHeight(child, depth, measure);
+    const h = floatingTopicTreeHeight(child, depth, measure);
     const anchorX =
       side === 'right'
         ? summaryNode.x + summaryNode.width + LEVEL_GAP
@@ -404,12 +470,12 @@ function placeSummarySideBranch(
 
   let childrenH = 0;
   for (let i = 0; i < visible.length; i++) {
-    childrenH += summarySubtreeHeight(visible[i]!, depth + 1, measure);
+    childrenH += floatingTopicTreeHeight(visible[i]!, depth + 1, measure);
     if (i < visible.length - 1) childrenH += V_GAP;
   }
   let childY = topY + (bandH - childrenH) / 2;
   for (const child of visible) {
-    const h = summarySubtreeHeight(child, depth + 1, measure);
+    const h = floatingTopicTreeHeight(child, depth + 1, measure);
     const childX = side === 'left' ? nodeX - LEVEL_GAP : nodeX + size.width + LEVEL_GAP;
     placeSummarySideBranch(child, depth + 1, childX, childY, h, side, nodes, edges, measure);
     childY += h + V_GAP;

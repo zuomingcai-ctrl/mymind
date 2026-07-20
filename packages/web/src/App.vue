@@ -70,6 +70,7 @@ import {
 } from '@mymind/core';
 import { useDocument } from './composables/useDocument';
 import { useViewport } from './composables/useViewport';
+import { useCanvasWheel } from './composables/useCanvasWheel';
 import { useDocumentStore } from './stores/document';
 import CanvasView from './components/canvas/CanvasView.vue';
 import type { StructureSelectionKind } from './components/canvas/CanvasView.vue';
@@ -199,9 +200,15 @@ function onSearchRef(el: unknown) {
 function focusSearch() {
   const el = searchInputRef.value;
   if (!el) return;
-  el.focus?.();
-  const input = el.input ?? (el as { $el?: HTMLElement }).$el?.querySelector?.('input');
-  input?.select?.();
+  const input =
+    el.input ??
+    ((el as { $el?: HTMLElement }).$el?.querySelector?.('input') as HTMLInputElement | null | undefined);
+  if (input) {
+    input.focus();
+    input.select();
+  } else {
+    el.focus?.();
+  }
 }
 
 function onToggleBranchFocus() {
@@ -217,6 +224,7 @@ const selectionAnchorId = ref<string | null>(null);
 
 const { viewport, zoomPercent, setZoom, fitContent, zoomBy, pan, ensureVisible, viewWidth, viewHeight } =
   useViewport();
+const { onWheel } = useCanvasWheel(pan, zoomBy);
 
 const showNewDialog = ref(false);
 const showTemplates = ref(false);
@@ -286,9 +294,8 @@ watch(selectedId, (id) => {
   }
   nextTick(() => {
     syncKeyboardCapturePosition();
-    const el = document.activeElement;
-    if (el instanceof HTMLElement && el.closest('.outliner-input, .outliner')) return;
-    if (el instanceof HTMLElement && el.closest('.topic-text-editor')) return;
+    // Do not steal focus from property panel / toolbar search / editors.
+    if (isIntentionalUiFocus(document.activeElement)) return;
     focusKeyboardCapture();
   });
 });
@@ -321,9 +328,22 @@ const keyboardCaptureStyle = ref({
   height: '1px',
 });
 
+/** UI regions that must keep keyboard focus (not the canvas capture input). */
+const INTENTIONAL_UI_FOCUS_SELECTOR =
+  '.topic-text-editor, .outliner-input, .outliner, .property-panel, .toolbar, .search-input, .el-dialog, .el-message-box, .el-overlay, .rel-title-editor, .marker-popover';
+
+function isIntentionalUiFocus(el: Element | null | undefined): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  if (el === keyboardCaptureRef.value) return false;
+  if (el === document.body || el === document.documentElement) return false;
+  return !!el.closest(INTENTIONAL_UI_FOCUS_SELECTOR);
+}
+
 function focusKeyboardCapture() {
   if (zenActive.value) return;
   if (editingTopic.value || editingRelationship.value) return;
+  // Never yank focus away from panel / search / other editors.
+  if (isIntentionalUiFocus(document.activeElement)) return;
   syncKeyboardCapturePosition();
   const el = keyboardCaptureRef.value;
   if (!el) return;
@@ -344,21 +364,31 @@ function syncKeyboardCapturePosition() {
   };
 }
 
+function reclaimKeyboardCaptureIfNeeded() {
+  if (zenActive.value) return;
+  if (editingTopic.value || editingRelationship.value) return;
+  const active = document.activeElement;
+  if (active === keyboardCaptureRef.value) return;
+  if (isIntentionalUiFocus(active)) return;
+  // During click focus transfer, activeElement is often <body> briefly — wait one more frame.
+  if (active === document.body || active === document.documentElement || !(active instanceof HTMLElement)) {
+    requestAnimationFrame(() => {
+      if (zenActive.value) return;
+      if (editingTopic.value || editingRelationship.value) return;
+      if (document.activeElement === keyboardCaptureRef.value) return;
+      if (isIntentionalUiFocus(document.activeElement)) return;
+      focusKeyboardCapture();
+    });
+    return;
+  }
+  focusKeyboardCapture();
+}
+
 function onKeyboardCaptureBlur() {
   // Keep canvas keyboard focus unless another intentional editor took it.
-  nextTick(() => {
-    if (zenActive.value) return;
-    if (editingTopic.value || editingRelationship.value) return;
-    const active = document.activeElement;
-    if (!(active instanceof HTMLElement)) {
-      focusKeyboardCapture();
-      return;
-    }
-    if (active === keyboardCaptureRef.value) return;
-    if (active.closest('.topic-text-editor, .outliner-input, .outliner, .property-panel, .toolbar, .search-input, .el-dialog, .el-message-box, .el-overlay, .rel-title-editor')) {
-      return;
-    }
-    focusKeyboardCapture();
+  // Use rAF so the click target has time to receive focus before we reclaim.
+  requestAnimationFrame(() => {
+    nextTick(() => reclaimKeyboardCaptureIfNeeded());
   });
 }
 
@@ -366,9 +396,7 @@ function canStartCanvasEdit(e: KeyboardEvent | Event): boolean {
   if (!activeSheet.value || !selectedId.value || zenActive.value) return false;
   const t = (e.target as HTMLElement | null) ?? document.activeElement;
   if (!(t instanceof HTMLElement)) return true;
-  if (t.closest('.topic-text-editor')) return false;
-  if (t.closest('.outliner-input, .outliner')) return false;
-  if (t.closest('.property-panel, .toolbar, .search-input, .el-dialog, .el-message-box, .el-overlay')) return false;
+  if (isIntentionalUiFocus(t)) return false;
   return true;
 }
 
@@ -546,6 +574,9 @@ function applyTopicSelect(id: string | null, mods: SelectionModifiers = {}) {
     selectionAnchorId.value = next[0];
   }
   focusKeyboardCapture();
+  if (id && next.includes(id)) {
+    revealTopic(id);
+  }
 }
 
 function onCanvasSelect(payload: {
@@ -555,6 +586,11 @@ function onCanvasSelect(payload: {
   metaKey: boolean;
 }) {
   applyTopicSelect(payload.id, payload);
+}
+
+function onToggleCollapse(topicId: string) {
+  if (!activeSheet.value) return;
+  dispatch(new ToggleCollapseCommand(activeSheet.value.id, topicId));
 }
 
 function onOutlinerSelect(payload: {
@@ -948,7 +984,8 @@ function onKeyDown(e: KeyboardEvent) {
       const input = e.target as HTMLInputElement;
       if (input.closest('.topic-text-editor')) {
         input.blur();
-      } else if (input.closest('.outliner-input, .outliner')) {
+      } else if (isIntentionalUiFocus(input)) {
+        // Allow normal Tab navigation in panel / search / outliner inputs.
         return;
       }
     }
@@ -1578,13 +1615,6 @@ function onIncludeRelSearch(v: boolean) {
   search();
 }
 
-function onWheel(e: WheelEvent) {
-  if (e.ctrlKey) {
-    e.preventDefault();
-    zoomBy(e.deltaY > 0 ? -0.1 : 0.1);
-  }
-}
-
 onUnmounted(() => {
   window.removeEventListener('keydown', onKeyDown, true);
   window.removeEventListener('beforeunload', onBeforeUnload);
@@ -1592,7 +1622,7 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" @wheel="onWheel">
+  <div class="app-shell">
     <Toolbar
       v-if="!zenActive"
       :can-undo="canUndo"
@@ -1699,7 +1729,7 @@ onUnmounted(() => {
         @select="onOutlinerSelect"
         @move="onTopicMove"
       />
-      <div class="canvas-wrap">
+      <div class="canvas-wrap" @wheel.prevent="onWheel">
         <CanvasView
           :sheet="activeSheet"
           :viewport="viewport"
@@ -1723,6 +1753,7 @@ onUnmounted(() => {
           @update-relationship-control="onUpdateRelationshipControl"
           @edit-relationship="startEditingRelationship"
           @edit-marker="startEditingMarker"
+          @toggle-collapse="onToggleCollapse"
           @request-keyboard-focus="focusKeyboardCapture"
         />
         <div v-if="selectedDecorationId && !zenActive" class="deco-toolbar">

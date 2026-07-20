@@ -128,6 +128,17 @@ export {
   MAX_ZOOM,
   type Viewport,
 } from './render/viewport.js';
+export {
+  COLLAPSE_BTN_RADIUS,
+  collapseButtonCenter,
+  defaultCollapseSide,
+  hitTestCollapseButton,
+  inferCollapseSide,
+  layoutCollapseButton,
+  pointInCollapseButton,
+  type CollapseButtonLayout,
+  type CollapseSide,
+} from './render/collapse-button.js';
 export { listThemes, getTheme, BUILTIN_THEMES } from './theme/presets.js';
 export { generatePalette, generateThemeFromSeed } from './theme/color-gen.js';
 export { loadCustomThemes, saveCustomTheme, listAllThemes } from './theme/custom.js';

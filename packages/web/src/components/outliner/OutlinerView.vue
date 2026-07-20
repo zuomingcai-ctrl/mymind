@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
-import type { Sheet } from '@mymind/core';
-import { UpdateTopicTitleCommand, ToggleCollapseCommand, findParentOfTopic } from '@mymind/core';
+import type { Sheet, Topic, Summary } from '@mymind/core';
+import {
+  UpdateTopicTitleCommand,
+  ToggleCollapseCommand,
+  findParentOfTopic,
+  findTopicInSheet,
+  isInFloatingTopicTree,
+} from '@mymind/core';
 import { ArrowRight, ArrowDown } from '@element-plus/icons-vue';
 import { useDocument } from '../../composables/useDocument';
 
@@ -33,26 +39,70 @@ interface Row {
   hasChildren: boolean;
   labels: string;
   markers: string;
+  /** Summary floating tree (not in rootTopic). */
+  section: 'main' | 'summary';
+  /** True for the floating root of a Summary. */
+  isSummaryRoot: boolean;
+  /** e.g. "优势 S – 威胁 T" for summary roots. */
+  rangeHint: string;
 }
 
-const rows = computed<Row[]>(() => {
-  if (!props.sheet) return [];
-  const result: Row[] = [];
-  function walk(topic: import('@mymind/core').Topic, depth: number) {
-    result.push({
-      id: topic.id,
-      title: topic.title,
-      depth,
-      collapsed: topic.collapsed,
-      hasChildren: topic.children.length > 0,
-      labels: topic.labels.map((l) => l.text).join(', '),
-      markers: topic.markers.join(' '),
-    });
-    if (!topic.collapsed) {
-      for (const child of topic.children) walk(child, depth + 1);
+function walkTopic(
+  topic: Topic,
+  depth: number,
+  section: Row['section'],
+  extras: { isSummaryRoot?: boolean; rangeHint?: string },
+  result: Row[],
+) {
+  result.push({
+    id: topic.id,
+    title: topic.title,
+    depth,
+    collapsed: topic.collapsed,
+    hasChildren: topic.children.length > 0,
+    labels: topic.labels.map((l) => l.text).join(', '),
+    markers: topic.markers.join(' '),
+    section,
+    isSummaryRoot: extras.isSummaryRoot ?? false,
+    rangeHint: extras.rangeHint ?? '',
+  });
+  if (!topic.collapsed) {
+    for (const child of topic.children) {
+      walkTopic(child, depth + 1, section, {}, result);
     }
   }
-  walk(props.sheet.rootTopic, 0);
+}
+
+function summaryRangeHint(sheet: Sheet, summary: Summary): string {
+  const [startId, endId] = summary.topicRange;
+  const start = findTopicInSheet(sheet, startId);
+  const end = findTopicInSheet(sheet, endId);
+  if (!start) return '';
+  if (!end || startId === endId) return start.title;
+  return `${start.title} – ${end.title}`;
+}
+
+const mainRows = computed<Row[]>(() => {
+  if (!props.sheet) return [];
+  const result: Row[] = [];
+  walkTopic(props.sheet.rootTopic, 0, 'main', {}, result);
+  return result;
+});
+
+const summaryRows = computed<Row[]>(() => {
+  if (!props.sheet) return [];
+  const result: Row[] = [];
+  for (const summary of props.sheet.summaries) {
+    const topic = props.sheet.floatingTopics.find((t) => t.id === summary.summaryTopicId);
+    if (!topic) continue;
+    walkTopic(
+      topic,
+      0,
+      'summary',
+      { isSummaryRoot: true, rangeHint: summaryRangeHint(props.sheet, summary) },
+      result,
+    );
+  }
   return result;
 });
 
@@ -75,6 +125,12 @@ function onRowClick(row: Row, event: MouseEvent) {
     ctrlKey: event.ctrlKey,
     metaKey: event.metaKey,
   });
+}
+
+/** Title input uses stopPropagation; still sync selection to the canvas. */
+function onInputClick(row: Row, event: MouseEvent) {
+  event.stopPropagation();
+  onRowClick(row, event);
 }
 
 function displayTitle(row: Row): string {
@@ -115,7 +171,7 @@ function toggleCollapse(row: Row, event: MouseEvent) {
 }
 
 function onDragStart(row: Row, event: DragEvent) {
-  if (!props.sheet || row.id === props.sheet.rootTopic.id) {
+  if (!props.sheet || row.section !== 'main' || row.id === props.sheet.rootTopic.id) {
     event.preventDefault();
     return;
   }
@@ -129,6 +185,9 @@ function onDrop(row: Row, event: DragEvent) {
   dragId.id = null;
   if (!topicId || !props.sheet || topicId === row.id) return;
   if (topicId === props.sheet.rootTopic.id) return;
+  // MoveTopic only operates on the main tree; keep summary / floating topics out.
+  if (row.section !== 'main') return;
+  if (isInFloatingTopicTree(props.sheet, topicId)) return;
   const parent = findParentOfTopic(props.sheet.rootTopic, row.id);
   if (event.altKey) {
     emit('move', { topicId, newParentId: row.id, newIndex: 0 });
@@ -153,7 +212,71 @@ function onDragOver(event: DragEvent) {
     </div>
     <el-scrollbar class="outliner-scroll">
       <div
-        v-for="row in rows"
+        v-if="summaryRows.length"
+        class="outliner-section"
+        role="group"
+        aria-label="概要"
+      >
+        <div class="outliner-section-label">概要</div>
+        <div
+          v-for="row in summaryRows"
+          :key="`summary-${row.id}`"
+          class="outliner-row summary-row"
+          role="treeitem"
+          :aria-selected="selectedSet.has(row.id)"
+          :aria-level="row.depth + 1"
+          :aria-expanded="row.hasChildren ? !row.collapsed : undefined"
+          :class="{
+            selected: selectedSet.has(row.id),
+            'summary-root': row.isSummaryRoot,
+          }"
+          :style="{ paddingLeft: `${8 + row.depth * 16}px` }"
+          :draggable="false"
+          @click="onRowClick(row, $event)"
+        >
+          <el-button
+            v-if="row.hasChildren"
+            class="collapse-btn"
+            text
+            size="small"
+            :icon="row.collapsed ? ArrowRight : ArrowDown"
+            @click="toggleCollapse(row, $event)"
+          />
+          <span v-else class="collapse-spacer" />
+          <span
+            v-if="row.isSummaryRoot"
+            class="summary-glyph"
+            aria-hidden="true"
+            title="概要"
+          >⌒</span>
+          <div class="outliner-title-block">
+            <el-input
+              :model-value="displayTitle(row)"
+              class="outliner-input"
+              size="small"
+              :data-topic-id="row.id"
+              @update:model-value="(v: string) => onInput(row, v)"
+              @blur="onBlur(row)"
+              @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
+              @click="(e: MouseEvent) => onInputClick(row, e)"
+            />
+            <span v-if="row.rangeHint" class="summary-range">涵盖 {{ row.rangeHint }}</span>
+          </div>
+          <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
+            {{ row.labels }}
+          </el-tag>
+        </div>
+      </div>
+
+      <div
+        v-if="summaryRows.length"
+        class="outliner-section-label outliner-section-label--main"
+      >
+        主题
+      </div>
+
+      <div
+        v-for="row in mainRows"
         :key="row.id"
         class="outliner-row"
         role="treeitem"
@@ -185,7 +308,7 @@ function onDragOver(event: DragEvent) {
           @update:model-value="(v: string) => onInput(row, v)"
           @blur="onBlur(row)"
           @keydown="(e: Event | KeyboardEvent) => onKeyDown(row, e)"
-          @click.stop
+          @click="(e: MouseEvent) => onInputClick(row, e)"
         />
         <el-tag v-if="row.labels" size="small" type="info" effect="plain" class="col-meta">
           {{ row.labels }}
@@ -216,6 +339,21 @@ function onDragOver(event: DragEvent) {
 .outliner-scroll {
   flex: 1;
 }
+.outliner-section {
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  padding-bottom: 4px;
+  margin-bottom: 2px;
+}
+.outliner-section-label {
+  padding: 8px 12px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--el-text-color-secondary);
+}
+.outliner-section-label--main {
+  padding-top: 6px;
+}
 .outliner-row {
   display: flex;
   align-items: center;
@@ -223,8 +361,48 @@ function onDragOver(event: DragEvent) {
   padding: 2px 8px;
   cursor: grab;
 }
+.outliner-row.summary-row {
+  cursor: default;
+  align-items: flex-start;
+}
+.outliner-row.summary-root {
+  background: var(--el-fill-color-lighter);
+  border-radius: 4px;
+  margin: 1px 4px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+}
 .outliner-row.selected {
   background: var(--el-color-primary-light-9);
+}
+.outliner-row.summary-root.selected {
+  background: var(--el-color-primary-light-9);
+}
+.summary-glyph {
+  flex-shrink: 0;
+  width: 16px;
+  height: 20px;
+  line-height: 20px;
+  text-align: center;
+  font-size: 14px;
+  color: var(--el-color-warning);
+  opacity: 0.9;
+}
+.outliner-title-block {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.summary-range {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--el-text-color-placeholder);
+  padding: 0 4px 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .outliner-input {
   flex: 1;
@@ -245,13 +423,17 @@ function onDragOver(event: DragEvent) {
   height: 20px;
   padding: 0 !important;
   min-height: 20px;
+  flex-shrink: 0;
 }
 .collapse-spacer {
   width: 20px;
+  flex-shrink: 0;
 }
 .col-meta {
   max-width: 72px;
   overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 </style>

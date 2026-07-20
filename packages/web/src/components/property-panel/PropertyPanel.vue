@@ -52,6 +52,8 @@ const noteRef = ref<{ focus: () => void } | null>(null);
 const commentRef = ref<{ focus: () => void; input?: HTMLInputElement } | null>(null);
 const equationRef = ref<{ focus: () => void } | null>(null);
 const commentDraft = ref('');
+const noteDraft = ref('');
+const equationDraft = ref('');
 const audioInput = ref<HTMLInputElement | null>(null);
 
 const selectedTopic = (): Topic | null => {
@@ -74,6 +76,22 @@ function findTopic(root: Topic, id: string): Topic | null {
   }
   return null;
 }
+
+watch(
+  () => [props.selectedId, selectedTopic()?.note] as const,
+  () => {
+    noteDraft.value = selectedTopic()?.note ?? '';
+  },
+  { immediate: true },
+);
+
+watch(
+  () => [props.selectedId, selectedTopic()?.equation] as const,
+  () => {
+    equationDraft.value = selectedTopic()?.equation ?? '';
+  },
+  { immediate: true },
+);
 
 function updateRelationshipTitle(value: string) {
   if (!props.sheet || !selectedRelationship.value) return;
@@ -114,6 +132,8 @@ function patchStyle(patch: Partial<TopicStyle>) {
 
 function updateNote(value: string) {
   if (!props.sheet || !props.selectedId) return;
+  noteDraft.value = value;
+  if ((selectedTopic()?.note ?? '') === value) return;
   dispatch(new UpdateNoteCommand(props.sheet.id, props.selectedId, value));
 }
 
@@ -160,6 +180,8 @@ function moveTodo(todoId: string, direction: -1 | 1) {
 
 function updateEquation(value: string) {
   if (!props.sheet || !props.selectedId) return;
+  equationDraft.value = value;
+  if ((selectedTopic()?.equation ?? '') === value) return;
   dispatch(new UpdateEquationCommand(props.sheet.id, props.selectedId, value));
 }
 
@@ -465,9 +487,9 @@ const borderLineType = computed({
             <el-form-item label="备注">
               <el-input
                 ref="noteRef"
+                v-model="noteDraft"
                 type="textarea"
                 :rows="3"
-                :model-value="selectedTopic()?.note ?? ''"
                 @change="updateNote"
               />
             </el-form-item>
@@ -555,7 +577,7 @@ const borderLineType = computed({
             <el-form-item label="方程">
               <el-input
                 ref="equationRef"
-                :model-value="selectedTopic()?.equation ?? ''"
+                v-model="equationDraft"
                 placeholder="LaTeX"
                 @change="updateEquation"
               />

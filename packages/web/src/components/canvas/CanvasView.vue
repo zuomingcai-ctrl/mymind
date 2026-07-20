@@ -36,6 +36,8 @@ import {
   resolveDecorationWorldRect,
   wrapPlainText,
   approximateLineWidth,
+  hitTestCollapseButton,
+  layoutCollapseButton,
   type Viewport,
   type Sheet,
   type TopicStyle,
@@ -46,6 +48,7 @@ import {
   type Topic,
   type ExtraShape,
   type LayoutResult,
+  type CollapseButtonLayout,
 } from '@mymind/core';
 import { useCanvasPan } from '../../composables/useCanvasPan';
 import { computeSnap } from '../../utils/align-snap';
@@ -109,6 +112,7 @@ const emit = defineEmits<{
       top: number;
     },
   ];
+  'toggle-collapse': [topicId: string];
   'request-keyboard-focus': [];
 }>();
 
@@ -150,6 +154,7 @@ const { panCursor, isPanning, onPointerDown, shouldSuppressClick } = useCanvasPa
 const canvasCursor = computed(() => {
   if (widthResizeDrag.value) return 'ew-resize';
   if (widthHandleHover.value) return 'ew-resize';
+  if (collapseHover.value) return 'pointer';
   if (decoDrag.value?.mode === 'resize') return 'nwse-resize';
   if (decoDrag.value?.mode === 'rotate') return 'grabbing';
   if (decoDrag.value?.mode === 'move') return 'move';
@@ -170,6 +175,7 @@ const widthResizeDrag = ref<{
   moved: boolean;
 } | null>(null);
 const widthHandleHover = ref(false);
+const collapseHover = ref(false);
 
 function measure(topic: Topic, depth: number) {
   const drag = widthResizeDrag.value;
@@ -557,6 +563,29 @@ function drawTodoRate(
   ctx.fillText(label, node.x + node.width / 2, node.y + node.height - 3);
 }
 
+function drawCollapseButton(ctx: CanvasRenderingContext2D, btn: CollapseButtonLayout) {
+  const { center, radius, collapsed, childCount } = btn;
+  ctx.beginPath();
+  ctx.fillStyle = '#FFFFFF';
+  ctx.strokeStyle = '#888888';
+  ctx.lineWidth = 1.25;
+  ctx.arc(center.x, center.y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = '#555555';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  if (collapsed) {
+    const label = childCount > 9 ? '9+' : String(childCount);
+    ctx.font = `bold ${childCount > 9 ? 8 : 10}px sans-serif`;
+    ctx.fillText(label, center.x, center.y + 0.5);
+  } else {
+    ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('−', center.x, center.y + 0.5);
+  }
+}
+
 function hitTestMarkerAt(
   world: { x: number; y: number },
   sheet: Sheet,
@@ -727,6 +756,20 @@ function draw() {
           sheet.canvasSettings.globalFontFamily ?? theme.fontFamily,
           selectedSet.value.has(node.id),
         );
+      }
+      // Fold controls above topic boxes so they stay clickable
+      for (const node of layer.nodes) {
+        if (props.visibleTopicIds && !props.visibleTopicIds.has(node.id)) continue;
+        const topic = layer.topics.get(node.id);
+        if (!topic) continue;
+        const btn = layoutCollapseButton(
+          topic,
+          node,
+          layout,
+          sheet.structure,
+          sheet.structureOptions,
+        );
+        if (btn) drawCollapseButton(ctx, btn);
       }
     }
   }
@@ -1032,6 +1075,24 @@ function onMouseDown(event: MouseEvent) {
       if (markerHit) {
         emit('select-structure', null);
         return;
+      }
+
+      // Fold control sits outside the topic box
+      {
+        const collapseHit = hitTestCollapseButton(world, sheet, layout);
+        if (collapseHit) {
+          suppressNextClick = true;
+          emit('select-structure', null);
+          emit('select', {
+            id: collapseHit.topicId,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+          });
+          emit('toggle-collapse', collapseHit.topicId);
+          event.preventDefault();
+          return;
+        }
       }
 
       // Callout bubbles sit above topics; pick before topic so they remain clickable
@@ -1390,6 +1451,21 @@ function onClick(event: MouseEvent) {
         return;
       }
 
+      {
+        const layout = registry.layout(props.sheet, measure);
+        const collapseHit = hitTestCollapseButton(world, props.sheet, layout);
+        if (collapseHit) {
+          emit('select', {
+            id: collapseHit.topicId,
+            shiftKey: false,
+            ctrlKey: false,
+            metaKey: false,
+          });
+          emit('toggle-collapse', collapseHit.topicId);
+          return;
+        }
+      }
+
       const decoHit = hitTestDecorationAt(world, props.sheet);
       if (decoHit) {
         emit('select-decoration', decoHit.dec.id);
@@ -1488,13 +1564,27 @@ function onContextMenu(event: MouseEvent) {
 function onMouseMoveHover(event: MouseEvent) {
   if (widthResizeDrag.value || decoDrag.value || calloutDrag.value) return;
   const sheet = props.sheet;
-  if (!sheet || !props.selectedIds.length) {
+  if (!sheet) {
     if (widthHandleHover.value) widthHandleHover.value = false;
+    if (collapseHover.value) collapseHover.value = false;
     return;
   }
   const world = worldFromEvent(event);
   if (!world) return;
   const layout = registry.layout(sheet, measure);
+
+  const collapseHit = hitTestCollapseButton(world, sheet, layout);
+  const nextCollapse = !!collapseHit;
+  if (collapseHover.value !== nextCollapse) collapseHover.value = nextCollapse;
+  if (nextCollapse) {
+    if (widthHandleHover.value) widthHandleHover.value = false;
+    return;
+  }
+
+  if (!props.selectedIds.length) {
+    if (widthHandleHover.value) widthHandleHover.value = false;
+    return;
+  }
   const hit = hitTestTopicWidthHandle(world, layout);
   const next = !!hit;
   if (widthHandleHover.value !== next) widthHandleHover.value = next;

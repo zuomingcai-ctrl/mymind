@@ -136,6 +136,76 @@ describe('summary & relationship layout fixes', () => {
     expect(layout.edges.some((e) => e.type === 'tree' && e.from === summaryTopicId)).toBe(true);
   });
 
+  it('adjacent summary subtrees do not vertically overlap', () => {
+    let d = createDocument();
+    const sheetId = d.sheets[0]!.id;
+    const rootId = d.sheets[0]!.rootTopic.id;
+    // Same-side siblings so both summaries share the outward column.
+    d = {
+      ...d,
+      sheets: d.sheets.map((s) =>
+        s.id === sheetId
+          ? {
+              ...s,
+              structureOptions: { type: 'mindmap' as const, balanced: false, direction: 'right' as const },
+            }
+          : s,
+      ),
+    };
+    for (const title of ['a', 'b', 'c', 'd']) {
+      d = new AddTopicCommand(sheetId, rootId, title).execute(d);
+    }
+    const ids = d.sheets[0]!.rootTopic.children.map((c) => c.id);
+    d = new AddSummaryCommand(sheetId, rootId, [ids[0]!, ids[1]!]).execute(d);
+    d = new AddSummaryCommand(sheetId, rootId, [ids[2]!, ids[3]!]).execute(d);
+
+    const s1 = d.sheets[0]!.summaries[0]!.summaryTopicId;
+    const s2 = d.sheets[0]!.summaries[1]!.summaryTopicId;
+    for (let i = 0; i < 5; i++) {
+      d = new AddTopicCommand(sheetId, s1, `s1-${i}`).execute(d);
+    }
+    for (let i = 0; i < 3; i++) {
+      d = new AddTopicCommand(sheetId, s2, `s2-${i}`).execute(d);
+    }
+
+    const sheet = d.sheets[0]!;
+    const layout = createDefaultLayoutRegistry().layout(sheet, createMeasureFn());
+    const kids1 = sheet.floatingTopics.find((t) => t.id === s1)!.children.map((c) => c.id);
+    const kids2 = sheet.floatingTopics.find((t) => t.id === s2)!.children.map((c) => c.id);
+
+    // Covered main-tree ranges must be tall enough for each summary's children.
+    const rangeSpan = (startId: string, endId: string) => {
+      const a = layout.nodes.get(startId)!;
+      const b = layout.nodes.get(endId)!;
+      const top = Math.min(a.y, b.y);
+      const bottom = Math.max(a.y + a.height, b.y + b.height);
+      return bottom - top;
+    };
+    const kidsSpan = (ids: string[]) => {
+      const nodes = ids.map((id) => layout.nodes.get(id)!);
+      const top = Math.min(...nodes.map((n) => n.y));
+      const bottom = Math.max(...nodes.map((n) => n.y + n.height));
+      return bottom - top;
+    };
+    expect(rangeSpan(ids[0]!, ids[1]!)).toBeGreaterThanOrEqual(kidsSpan(kids1));
+    expect(rangeSpan(ids[2]!, ids[3]!)).toBeGreaterThanOrEqual(kidsSpan(kids2));
+
+    const box = (id: string) => {
+      const n = layout.nodes.get(id)!;
+      return { x: n.x, y: n.y, right: n.x + n.width, bottom: n.y + n.height };
+    };
+    for (const a of kids1) {
+      const ba = box(a);
+      for (const b of kids2) {
+        const bb = box(b);
+        const overlapX = ba.x < bb.right && bb.x < ba.right;
+        if (!overlapX) continue;
+        const gap = ba.y < bb.y ? bb.y - ba.bottom : ba.y - bb.bottom;
+        expect(gap).toBeGreaterThanOrEqual(30);
+      }
+    }
+  });
+
   it('UpdateTopicTitleCommand updates floating summary topic', () => {
     let d = createDocument();
     const sheetId = d.sheets[0]!.id;

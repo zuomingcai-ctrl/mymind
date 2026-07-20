@@ -388,13 +388,19 @@ export interface LayoutResult {
 
 export type MeasureFn = (topic: Topic, depth: number) => Size;
 
+/** Optional sheet data layout strategies may use (e.g. summary reserves). */
+export interface LayoutExtras {
+  floatingTopics?: Topic[];
+  summaries?: Summary[];
+}
+
 export interface LayoutStrategy {
   readonly type: StructureType;
   layout(
     root: Topic,
     options: StructureOptions,
     measure: MeasureFn,
-    floatingTopics?: Topic[],
+    extras?: LayoutExtras,
   ): LayoutResult;
 }
 

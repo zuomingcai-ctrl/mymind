@@ -38,7 +38,7 @@ export class LayoutRegistry {
       sheet.rootTopic,
       sheet.structureOptions,
       measure,
-      sheet.floatingTopics,
+      { floatingTopics: sheet.floatingTopics, summaries: sheet.summaries },
     );
     return layoutStructureElements(sheet, base, measure);
   }
@@ -46,7 +46,7 @@ export class LayoutRegistry {
 
 export function createDefaultLayoutRegistry(): LayoutRegistry {
   const registry = new LayoutRegistry();
-  registry.register({ type: 'mindmap', layout: (r, o, m) => layoutMindmap(r, o, m) });
+  registry.register({ type: 'mindmap', layout: (r, o, m, e) => layoutMindmap(r, o, m, e) });
   registry.register({ type: 'logic-chart', layout: (r, o, m) => layoutLogicChart(r, o, m) });
   registry.register({ type: 'tree-chart', layout: (r, o, m) => layoutTreeChart(r, o, m) });
   registry.register({ type: 'org-chart', layout: (r, o, m) => layoutOrgChart(r, o, m) });
