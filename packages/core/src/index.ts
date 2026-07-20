@@ -102,6 +102,19 @@ export { LayoutRegistry, createDefaultLayoutRegistry } from './layout/registry.j
 export { buildFrame } from './render/pipeline.js';
 export { strokeEdge, traceEdgePath, autoCubicControlPoints, defaultRelationshipControlPoint, defaultRelationshipCubicControlPoints, drawRelationshipHandles, drawRelationshipArrows, relationshipLabelPoint, type DrawEdgeOptions } from './render/draw-edge.js';
 export {
+  HAND_DRAWN_FONT_FAMILY,
+  beginHandDrawnDiamond,
+  beginHandDrawnEllipse,
+  beginHandDrawnLine,
+  beginHandDrawnRoundedRect,
+  jitterPolyline,
+  resolveCanvasFontFamily,
+  sampleEdgePoints,
+  seedForId,
+  traceHandDrawnEdge,
+  type HandDrawnStrokeOptions,
+} from './render/hand-drawn.js';
+export {
   calloutBoundsFromOffset,
   calloutTipSide,
   measureCalloutSize,
@@ -163,6 +176,13 @@ export {
   type TemplatePreset,
   type TemplateCategory,
 } from './templates/presets.js';
+export {
+  listCanvasStyleTemplates,
+  saveCanvasStyleTemplate,
+  deleteCanvasStyleTemplate,
+  captureCanvasStyleTemplate,
+  type CanvasStyleTemplate,
+} from './templates/canvas-style.js';
 export {
   STRUCTURE_VARIANTS,
   STRUCTURE_SECTIONS,

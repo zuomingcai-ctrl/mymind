@@ -7,6 +7,7 @@ import type {
 import { createSheet, updateSheetInDocument } from '../model/factory.js';
 import { defaultStructureOptions } from '../model/types.js';
 import { getStructureVariant } from '../structure/variants.js';
+import { getTheme } from '../theme/custom.js';
 import type { Command } from './types.js';
 
 export class UpdateSheetStructureCommand implements Command {
@@ -174,6 +175,7 @@ export class SetActiveSheetCommand implements Command {
 export class UpdateThemeCommand implements Command {
   readonly name = 'UpdateTheme';
   private previousThemeId = '';
+  private previousHandDrawn = false;
 
   constructor(
     private readonly sheetId: string,
@@ -183,9 +185,17 @@ export class UpdateThemeCommand implements Command {
   execute(state: MindMapDocument): MindMapDocument {
     return updateSheetInDocument(state, this.sheetId, (sheet) => {
       this.previousThemeId = sheet.canvasSettings.themeId;
+      this.previousHandDrawn = sheet.canvasSettings.handDrawn;
+      const themeChanged = this.themeId !== this.previousThemeId;
+      const theme = getTheme(this.themeId);
       return {
         ...sheet,
-        canvasSettings: { ...sheet.canvasSettings, themeId: this.themeId },
+        canvasSettings: {
+          ...sheet.canvasSettings,
+          themeId: this.themeId,
+          // Sync sketch mode when switching themes; keep checkbox when only editing colors.
+          ...(themeChanged ? { handDrawn: theme.handDrawn } : {}),
+        },
       };
     });
   }
@@ -193,9 +203,15 @@ export class UpdateThemeCommand implements Command {
   undo(state: MindMapDocument): MindMapDocument {
     if (!this.previousThemeId) return state;
     const prev = this.previousThemeId;
+    const prevHandDrawn = this.previousHandDrawn;
+    const themeChanged = this.themeId !== prev;
     return updateSheetInDocument(state, this.sheetId, (sheet) => ({
       ...sheet,
-      canvasSettings: { ...sheet.canvasSettings, themeId: prev },
+      canvasSettings: {
+        ...sheet.canvasSettings,
+        themeId: prev,
+        ...(themeChanged ? { handDrawn: prevHandDrawn } : {}),
+      },
     }));
   }
 }

@@ -424,7 +424,7 @@ export function runsToPlain(runs: InlineRun[]): string {
 export function defaultStructureOptions(type: StructureType): StructureOptions {
   switch (type) {
     case 'mindmap':
-      return { type: 'mindmap', balanced: true };
+      return { type: 'mindmap', balanced: false, direction: 'right' };
     case 'logic-chart':
       return {
         type: 'logic-chart',
@@ -441,7 +441,7 @@ export function defaultStructureOptions(type: StructureType): StructureOptions {
     case 'timeline':
       return { type: 'timeline', axis: 'horizontal', alternate: true, showScale: true };
     case 'fishbone':
-      return { type: 'fishbone', headPosition: 'right', branchAngle: 45 };
+      return { type: 'fishbone', headPosition: 'left', branchAngle: 45 };
     case 'matrix':
       return { type: 'matrix', rows: 2, cols: 2, titles: ['S', 'W', 'O', 'T'], assignMode: 'auto' };
     case 'brace-map':

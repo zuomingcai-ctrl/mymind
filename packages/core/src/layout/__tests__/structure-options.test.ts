@@ -12,7 +12,11 @@ describe('structure option semantics', () => {
   const registry = createDefaultLayoutRegistry();
 
   it('defaults align with feature spec', () => {
-    expect(defaultStructureOptions('fishbone')).toMatchObject({ headPosition: 'right' });
+    expect(defaultStructureOptions('mindmap')).toMatchObject({
+      balanced: false,
+      direction: 'right',
+    });
+    expect(defaultStructureOptions('fishbone')).toMatchObject({ headPosition: 'left' });
     expect(defaultStructureOptions('brace-map')).toMatchObject({
       braceSide: 'right',
       partPosition: 'opposite',

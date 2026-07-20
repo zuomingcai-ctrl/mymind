@@ -1,4 +1,5 @@
 import type { Theme } from '../model/types.js';
+import { HAND_DRAWN_FONT_FAMILY } from '../render/hand-drawn.js';
 
 export const BUILTIN_THEMES: Theme[] = [
   {
@@ -133,7 +134,7 @@ export const BUILTIN_THEMES: Theme[] = [
       branchColors: ['#FF8F00', '#F4511E', '#7CB342', '#039BE5', '#8E24AA'],
     },
     edge: { lineType: 'curve', color: '#795548', width: 2, arrowStart: false, arrowEnd: false },
-    fontFamily: 'Comic Sans MS, cursive',
+    fontFamily: HAND_DRAWN_FONT_FAMILY,
     handDrawn: true,
   },
   {

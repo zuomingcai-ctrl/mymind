@@ -23,7 +23,7 @@ describe('structure variants', () => {
 
   it('matchStructureVariant finds default mindmap variant', () => {
     const sheet = createSheet();
-    expect(matchStructureVariant(sheet)).toBe('mindmap-balanced-classic');
+    expect(matchStructureVariant(sheet)).toBe('mindmap-right-curve');
   });
 
   it('createDocumentWithVariant applies hand-drawn settings', () => {

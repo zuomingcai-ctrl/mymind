@@ -66,7 +66,7 @@ describe('brace map', () => {
     }
   });
 
-  it('uses braces as connectors without tree edges', () => {
+  it('uses braces as connectors without tree edges or stems', () => {
     const doc = createDocument('x', 'brace-map');
     const sheet = doc.sheets[0]!;
     let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'c1').execute(doc);
@@ -74,7 +74,52 @@ describe('brace map', () => {
     const layout = registry.layout(d.sheets[0]!, measure);
     expect(layout.edges.filter((e) => e.type === 'tree')).toHaveLength(0);
     const brace = layout.extraShapes.find((s) => s.type === 'brace')!;
-    expect(brace.style.stemFromX).toBeTypeOf('number');
-    expect(brace.style.stemFromY).toBeTypeOf('number');
+    expect(brace.style.stemFromX).toBeUndefined();
+    expect(brace.style.stemFromY).toBeUndefined();
+    const svg = extraShapeSvgElement(brace);
+    // One path for the brace glyph only — no parent→cusp stem.
+    expect(svg.match(/<path/g)?.length).toBe(1);
+  });
+
+  it('aligns brace cusp with parent when a child has nested descendants', () => {
+    const doc = createDocument('x', 'brace-map');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'leaf').execute(doc);
+    d = new AddTopicCommand(sheet.id, d.sheets[0]!.rootTopic.id, 'branch').execute(d);
+    const branchId = d.sheets[0]!.rootTopic.children[1]!.id;
+    d = new AddTopicCommand(sheet.id, branchId, 'a').execute(d);
+    d = new AddTopicCommand(sheet.id, branchId, 'b').execute(d);
+    d = new AddTopicCommand(sheet.id, branchId, 'c').execute(d);
+    const layout = registry.layout(d.sheets[0]!, measure);
+    const root = layout.nodes.get(d.sheets[0]!.rootTopic.id)!;
+    const rootBrace = layout.extraShapes.find((s) => s.id === `brace-${root.id}`)!;
+    const parentMid = root.y + root.height / 2;
+    const braceMid = rootBrace.bounds.y + rootBrace.bounds.height / 2;
+    expect(Math.abs(braceMid - parentMid)).toBeLessThan(1);
+
+    const branch = layout.nodes.get(branchId)!;
+    const branchBrace = layout.extraShapes.find((s) => s.id === `brace-${branchId}`)!;
+    const branchMid = branch.y + branch.height / 2;
+    const nestedBraceMid = branchBrace.bounds.y + branchBrace.bounds.height / 2;
+    expect(Math.abs(nestedBraceMid - branchMid)).toBeLessThan(1);
+  });
+
+  it('places brace tightly after parent instead of mid-gap', () => {
+    const doc = createDocument('x', 'brace-map');
+    const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'brace-map',
+      braceSide: 'right',
+      partPosition: 'opposite',
+    };
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'c1').execute(doc);
+    d = new AddTopicCommand(sheet.id, d.sheets[0]!.rootTopic.id, 'c2').execute(d);
+    const layout = registry.layout(d.sheets[0]!, measure);
+    const root = layout.nodes.get(d.sheets[0]!.rootTopic.id)!;
+    const brace = layout.extraShapes.find((s) => s.type === 'brace')!;
+    const parts = [...layout.nodes.values()].filter((n) => n.depth === 1);
+    expect(brace.bounds.x).toBeGreaterThan(root.x + root.width);
+    expect(brace.bounds.x - (root.x + root.width)).toBeLessThan(40);
+    expect(Math.min(...parts.map((p) => p.x))).toBeGreaterThan(brace.bounds.x + brace.bounds.width);
   });
 });

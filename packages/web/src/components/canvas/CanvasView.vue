@@ -17,6 +17,12 @@ import {
   drawRelationshipHandles,
   drawRelationshipArrows,
   relationshipLabelPoint,
+  resolveCanvasFontFamily,
+  beginHandDrawnRoundedRect,
+  beginHandDrawnEllipse,
+  beginHandDrawnDiamond,
+  beginHandDrawnLine,
+  seedForId,
   markerGlyph,
   layoutMarkerHits,
   layoutTopicContent,
@@ -324,11 +330,12 @@ function decorationWithLivePatch<T extends { id: string }>(dec: T): T & {
 
 function drawTopicNode(
   ctx: CanvasRenderingContext2D,
-  node: { x: number; y: number; width: number; height: number; depth: number; display?: 'box' | 'underline' },
+  node: { id?: string; x: number; y: number; width: number; height: number; depth: number; display?: 'box' | 'underline' },
   topic: Topic,
   style: TopicStyle,
   fontFamily: string,
   selected: boolean,
+  handDrawn = false,
 ) {
   const merged: TopicStyle = {
     ...style,
@@ -344,14 +351,20 @@ function drawTopicNode(
   }
 
   const content = layoutTopicContent(node, topic);
+  const seed = seedForId(node.id ?? topic.id, node.x + node.y);
 
   if (merged.shape === 'none' || node.display === 'underline') {
     const lineY = node.y + node.height - 1;
     ctx.strokeStyle = merged.borderColor ?? '#888888';
     ctx.lineWidth = merged.borderWidth ?? 1;
-    ctx.beginPath();
-    ctx.moveTo(node.x, lineY);
-    ctx.lineTo(node.x + node.width, lineY);
+    ctx.setLineDash([]);
+    if (handDrawn) {
+      beginHandDrawnLine(ctx, node.x, lineY, node.x + node.width, lineY, { seed, roughness: 1.4 });
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(node.x, lineY);
+      ctx.lineTo(node.x + node.width, lineY);
+    }
     ctx.stroke();
     drawTopicAdornments(ctx, node, topic, displayTitle, merged, ff, content, 'left');
     if (selected) {
@@ -365,26 +378,49 @@ function drawTopicNode(
   ctx.fillStyle = merged.fillColor ?? '#ffffff';
   ctx.strokeStyle = merged.borderColor ?? '#cccccc';
   ctx.lineWidth = merged.borderWidth ?? 1;
-  if (merged.borderDash?.length) ctx.setLineDash(merged.borderDash);
+  // Hand-drawn borders stay solid; only respect explicit borderDash when not sketching.
+  if (!handDrawn && merged.borderDash?.length) ctx.setLineDash(merged.borderDash);
   else ctx.setLineDash([]);
 
   if (merged.shape === 'ellipse') {
-    ctx.beginPath();
-    ctx.ellipse(node.x + node.width / 2, node.y + node.height / 2, node.width / 2, node.height / 2, 0, 0, Math.PI * 2);
+    if (handDrawn) {
+      beginHandDrawnEllipse(
+        ctx,
+        node.x + node.width / 2,
+        node.y + node.height / 2,
+        node.width / 2,
+        node.height / 2,
+        { seed, roughness: 1.5 },
+      );
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(node.x + node.width / 2, node.y + node.height / 2, node.width / 2, node.height / 2, 0, 0, Math.PI * 2);
+    }
     ctx.fill();
     ctx.stroke();
   } else if (merged.shape === 'diamond') {
-    ctx.beginPath();
-    ctx.moveTo(node.x + node.width / 2, node.y);
-    ctx.lineTo(node.x + node.width, node.y + node.height / 2);
-    ctx.lineTo(node.x + node.width / 2, node.y + node.height);
-    ctx.lineTo(node.x, node.y + node.height / 2);
-    ctx.closePath();
+    if (handDrawn) {
+      beginHandDrawnDiamond(ctx, node.x, node.y, node.width, node.height, { seed, roughness: 1.5 });
+    } else {
+      ctx.beginPath();
+      ctx.moveTo(node.x + node.width / 2, node.y);
+      ctx.lineTo(node.x + node.width, node.y + node.height / 2);
+      ctx.lineTo(node.x + node.width / 2, node.y + node.height);
+      ctx.lineTo(node.x, node.y + node.height / 2);
+      ctx.closePath();
+    }
     ctx.fill();
     ctx.stroke();
   } else {
     const r = merged.shape === 'rectangle' ? 2 : 6;
-    roundRect(ctx, node.x, node.y, node.width, node.height, r);
+    if (handDrawn) {
+      beginHandDrawnRoundedRect(ctx, node.x, node.y, node.width, node.height, r, {
+        seed,
+        roughness: 1.5,
+      });
+    } else {
+      roundRect(ctx, node.x, node.y, node.width, node.height, r);
+    }
     ctx.fill();
     ctx.stroke();
   }
@@ -691,6 +727,8 @@ function draw() {
   );
   const frame = buildFrame(sheet, layout, theme.colors.background);
   const bg = sheet.canvasSettings.backgroundColor || theme.colors.background;
+  const handDrawn = sheet.canvasSettings.handDrawn;
+  const canvasFont = resolveCanvasFontFamily(sheet.canvasSettings, theme.fontFamily);
 
   ctx.clearRect(0, 0, w, h);
   ctx.fillStyle = bg;
@@ -746,7 +784,8 @@ function draw() {
           color: rel?.style?.color ?? (edge.type === 'relationship' ? '#E67E22' : treeColor),
           width: theme.edge.width,
           lineType,
-          dash: sheet.canvasSettings.handDrawn ? [3, 2] : theme.edge.dash,
+          dash: theme.edge.dash,
+          handDrawn,
           selected,
           label: rel?.title,
           arrowStart:
@@ -780,8 +819,9 @@ function draw() {
           node,
           topic,
           base,
-          sheet.canvasSettings.globalFontFamily ?? theme.fontFamily,
+          canvasFont,
           selectedSet.value.has(node.id),
+          handDrawn,
         );
       }
       // Fold controls above topic boxes so they stay clickable

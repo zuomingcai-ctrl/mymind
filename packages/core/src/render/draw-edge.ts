@@ -1,4 +1,5 @@
 import type { EdgeStyle, LayoutEdge, Point } from '../model/types.js';
+import { seedForId, traceHandDrawnEdge } from './hand-drawn.js';
 
 export interface DrawEdgeOptions {
   color: string;
@@ -12,6 +13,8 @@ export interface DrawEdgeOptions {
   arrowEnd?: boolean;
   /** When true, skip arrowheads (redraw them later above topics). */
   skipArrows?: boolean;
+  /** Sketchy jittered stroke (TH-006). Tree edges ignore theme dash when set. */
+  handDrawn?: boolean;
 }
 
 /** XMind-style cubic handles: two control points bowing to one side. */
@@ -231,6 +234,22 @@ function drawArrowHead(
   ctx.fill();
 }
 
+function beginEdgePath(
+  ctx: CanvasRenderingContext2D,
+  edge: LayoutEdge,
+  options: DrawEdgeOptions,
+): void {
+  ctx.beginPath();
+  if (options.handDrawn) {
+    traceHandDrawnEdge(ctx, edge, options.lineType, {
+      seed: seedForId(edge.id, options.width),
+      roughness: 1.5,
+    });
+  } else {
+    traceEdgePath(ctx, edge, options.lineType);
+  }
+}
+
 export function strokeEdge(
   ctx: CanvasRenderingContext2D,
   edge: LayoutEdge,
@@ -239,21 +258,24 @@ export function strokeEdge(
   const isRelationship = edge.type === 'relationship';
   const isSummary = edge.type === 'summary';
   const selected = !!options.selected;
+  const handDrawn = !!options.handDrawn;
   const strokeColor = selected
     ? '#4A90D9'
     : isRelationship
       ? (options.color || '#E67E22')
       : options.color;
 
-  ctx.beginPath();
-  traceEdgePath(ctx, edge, options.lineType);
+  // Relationships / summaries keep intentional dashes; tree edges use solid
+  // (or hand-drawn jitter) — never fake "sketch" with a short dash pattern.
+  const treeDash = handDrawn ? [] : (options.dash ?? []);
+
+  beginEdgePath(ctx, edge, options);
   if (selected && isRelationship) {
     ctx.strokeStyle = 'rgba(74, 144, 217, 0.35)';
     ctx.lineWidth = 10;
     ctx.setLineDash([]);
     ctx.stroke();
-    ctx.beginPath();
-    traceEdgePath(ctx, edge, options.lineType);
+    beginEdgePath(ctx, edge, options);
     ctx.strokeStyle = '#4A90D9';
     ctx.lineWidth = 2;
     ctx.setLineDash([6, 4]);
@@ -261,12 +283,12 @@ export function strokeEdge(
   } else if (selected) {
     ctx.strokeStyle = '#4A90D9';
     ctx.lineWidth = options.width + 2;
-    ctx.setLineDash(isSummary ? [6, 4] : (options.dash ?? []));
+    ctx.setLineDash(isSummary ? [6, 4] : treeDash);
     ctx.stroke();
   } else {
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = isRelationship ? 1.5 : options.width;
-    ctx.setLineDash(isRelationship || isSummary ? [6, 4] : (options.dash ?? []));
+    ctx.setLineDash(isRelationship || isSummary ? [6, 4] : treeDash);
     ctx.stroke();
   }
   ctx.setLineDash([]);

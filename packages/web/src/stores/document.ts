@@ -24,7 +24,7 @@ export const useDocumentStore = defineStore('document', {
   },
 
   actions: {
-    newDocument(variantId = 'mindmap-balanced-classic') {
+    newDocument(variantId = 'mindmap-right-curve') {
       const doc = createDocumentWithVariant(variantId);
       this.loadDocument(doc);
     },

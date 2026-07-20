@@ -25,7 +25,7 @@ const activeNames = ref<string[]>(
 const activeVariantId = computed(() => {
   if (props.selectedVariantId) return props.selectedVariantId;
   if (props.sheet) return matchStructureVariant(props.sheet);
-  return 'mindmap-balanced-classic';
+  return 'mindmap-right-curve';
 });
 
 watch(

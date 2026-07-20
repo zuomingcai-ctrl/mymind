@@ -198,7 +198,7 @@ export function layoutFishbone(
 ): LayoutResult {
   const branchAngle =
     options.type === 'fishbone' ? (options.branchAngle * Math.PI) / 180 : Math.PI / 4;
-  const headPosition = options.type === 'fishbone' ? options.headPosition : 'right';
+  const headPosition = options.type === 'fishbone' ? options.headPosition : 'left';
   const nodes = new Map<string, LayoutNode>();
   const edges: LayoutEdge[] = [];
   const extraShapes: ExtraShape[] = [];

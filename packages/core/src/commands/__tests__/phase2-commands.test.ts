@@ -42,18 +42,17 @@ describe('Phase 2 commands', () => {
     const sheetId = doc.sheets[0]!.id;
     const cmd = new UpdateStructureOptionsCommand(sheetId, {
       type: 'mindmap',
-      balanced: false,
-      direction: 'right',
+      balanced: true,
     });
     const d = cmd.execute(doc);
     expect(d.sheets[0]!.structureOptions).toEqual({
       type: 'mindmap',
-      balanced: false,
-      direction: 'right',
+      balanced: true,
     });
     expect(cmd.undo(d).sheets[0]!.structureOptions).toEqual({
       type: 'mindmap',
-      balanced: true,
+      balanced: false,
+      direction: 'right',
     });
   });
 

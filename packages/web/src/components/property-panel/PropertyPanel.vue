@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
-import type { Sheet, Topic, TopicStyle, EdgeStyle } from '@mymind/core';
+import type { Sheet, Topic, TopicStyle, EdgeStyle, CanvasStyleTemplate } from '@mymind/core';
 import {
   UpdateNoteCommand,
   AddLabelCommand,
@@ -14,6 +14,7 @@ import {
   DeleteCommentCommand,
   UpdateTopicStyleCommand,
   UpdateCanvasSettingsCommand,
+  UpdateThemeCommand,
   AddMarkerCommand,
   DeleteMarkerCommand,
   listMarkers,
@@ -24,7 +25,13 @@ import {
   UpdateRelationshipStyleCommand,
   nextTextTransform,
   generateId,
+  captureCanvasStyleTemplate,
+  saveCanvasStyleTemplate,
+  listCanvasStyleTemplates,
+  deleteCanvasStyleTemplate,
+  saveCustomTheme,
 } from '@mymind/core';
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { useDocument } from '../../composables/useDocument';
 import StructurePicker from './StructurePicker.vue';
 import ThemeInlinePanel from './ThemeInlinePanel.vue';
@@ -130,6 +137,11 @@ function patchStyle(patch: Partial<TopicStyle>) {
   dispatch(new UpdateTopicStyleCommand(props.sheet.id, props.selectedId, patch));
 }
 
+/** Color picker clear emits null → drop the override so theme style applies. */
+function setStyleColor(key: 'fillColor' | 'borderColor' | 'fontColor', v: string | null) {
+  patchStyle({ [key]: v ?? undefined });
+}
+
 function updateNote(value: string) {
   if (!props.sheet || !props.selectedId) return;
   noteDraft.value = value;
@@ -150,6 +162,63 @@ function removeLabel(labelId: string) {
 function patchCanvas(patch: Partial<Sheet['canvasSettings']>) {
   if (!props.sheet) return;
   dispatch(new UpdateCanvasSettingsCommand(props.sheet.id, patch));
+}
+
+const showCanvasTemplates = ref(false);
+const canvasTemplates = ref<CanvasStyleTemplate[]>([]);
+
+function refreshCanvasTemplates() {
+  canvasTemplates.value = listCanvasStyleTemplates();
+}
+
+async function onSaveCanvasTemplate() {
+  if (!props.sheet) return;
+  try {
+    const { value: name } = await ElMessageBox.prompt('模板名称', '存为画布模板', {
+      inputValue: '画布样式',
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+    });
+    if (!name?.trim()) return;
+    const tpl = captureCanvasStyleTemplate(props.sheet.canvasSettings, name.trim());
+    saveCanvasStyleTemplate(tpl);
+    refreshCanvasTemplates();
+    ElMessage.success('已保存画布模板');
+  } catch (err) {
+    if (err === 'cancel' || err === 'close') return;
+    console.error(err);
+    ElMessage.error('保存模板失败');
+  }
+}
+
+function openCanvasTemplates() {
+  refreshCanvasTemplates();
+  showCanvasTemplates.value = true;
+}
+
+function applyCanvasTemplate(tpl: CanvasStyleTemplate) {
+  if (!props.sheet) return;
+  // JSON clone: tpl is a Vue reactive proxy (structuredClone cannot clone proxies).
+  const theme = JSON.parse(JSON.stringify(tpl.theme)) as typeof tpl.theme;
+  const settings = JSON.parse(JSON.stringify(tpl.canvasSettings)) as typeof tpl.canvasSettings;
+  // New id so ThemeInlinePanel / getTheme pick up the snapshot even if sheet already had a custom theme.
+  theme.id = `sheet-${props.sheet.id}-${generateId()}`;
+  theme.name = tpl.name;
+  saveCustomTheme(theme);
+  dispatch(new UpdateThemeCommand(props.sheet.id, theme.id));
+  dispatch(
+    new UpdateCanvasSettingsCommand(props.sheet.id, {
+      ...settings,
+      themeId: theme.id,
+    }),
+  );
+  showCanvasTemplates.value = false;
+  ElMessage.success(`已应用模板：${tpl.name}`);
+}
+
+function removeCanvasTemplate(id: string) {
+  deleteCanvasStyleTemplate(id);
+  refreshCanvasTemplates();
 }
 
 function toggleTodo(todoId: string) {
@@ -304,7 +373,7 @@ const borderLineType = computed({
             <el-form-item label="颜色">
               <el-color-picker
                 :model-value="selectedRelationship.style?.color ?? '#E67E22'"
-                @change="(v: string | null) => v && patchRelationshipStyle({ color: v })"
+                @change="(v: string | null) => patchRelationshipStyle({ color: v ?? '#E67E22' })"
               />
             </el-form-item>
           </el-form>
@@ -336,16 +405,16 @@ const borderLineType = computed({
               <el-col :span="12">
                 <el-form-item label="填充">
                   <el-color-picker
-                    :model-value="style?.fillColor ?? '#E8F4FD'"
-                    @change="(v: string | null) => v && patchStyle({ fillColor: v })"
+                    :model-value="style?.fillColor"
+                    @change="(v: string | null) => setStyleColor('fillColor', v)"
                   />
                 </el-form-item>
               </el-col>
               <el-col :span="12">
                 <el-form-item label="边框色">
                   <el-color-picker
-                    :model-value="style?.borderColor ?? '#4A90D9'"
-                    @change="(v: string | null) => v && patchStyle({ borderColor: v })"
+                    :model-value="style?.borderColor"
+                    @change="(v: string | null) => setStyleColor('borderColor', v)"
                   />
                 </el-form-item>
               </el-col>
@@ -418,8 +487,8 @@ const borderLineType = computed({
               <el-col :span="12">
                 <el-form-item label="字色">
                   <el-color-picker
-                    :model-value="style?.fontColor ?? '#333333'"
-                    @change="(v: string | null) => v && patchStyle({ fontColor: v })"
+                    :model-value="style?.fontColor"
+                    @change="(v: string | null) => setStyleColor('fontColor', v)"
                   />
                 </el-form-item>
               </el-col>
@@ -623,13 +692,13 @@ const borderLineType = computed({
                   <el-color-picker
                     :model-value="z.style?.backgroundColor ?? 'rgba(64,158,255,0.08)'"
                     show-alpha
-                    @change="(v: string | null) => v && patchZone(z.id, { style: { backgroundColor: v } })"
+                    @change="(v: string | null) => patchZone(z.id, { style: { backgroundColor: v ?? 'rgba(64,158,255,0.08)' } })"
                   />
                 </el-form-item>
                 <el-form-item label="边框">
                   <el-color-picker
                     :model-value="z.style?.borderColor ?? '#409eff'"
-                    @change="(v: string | null) => v && patchZone(z.id, { style: { borderColor: v } })"
+                    @change="(v: string | null) => patchZone(z.id, { style: { borderColor: v ?? '#409eff' } })"
                   />
                 </el-form-item>
                 <el-form-item label="比例预设">
@@ -654,80 +723,126 @@ const borderLineType = computed({
         <template #label>
           <span data-testid="tab-canvas">画布</span>
         </template>
-        <el-scrollbar class="tab-scroll">
-          <el-collapse v-model="canvasSections" class="canvas-collapse">
-            <el-collapse-item title="结构" name="structure">
-              <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
-            </el-collapse-item>
+        <div class="canvas-tab">
+          <div class="template-bar">
+            <div class="template-actions">
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                data-testid="canvas-save-template"
+                :disabled="!sheet"
+                @click="onSaveCanvasTemplate"
+              >
+                存为模板
+              </el-button>
+              <el-button
+                size="small"
+                plain
+                data-testid="canvas-load-template"
+                :disabled="!sheet"
+                @click="openCanvasTemplates"
+              >
+                从模板加载
+              </el-button>
+            </div>
+          </div>
+          <el-scrollbar class="tab-scroll canvas-scroll">
+            <el-collapse v-model="canvasSections" class="canvas-collapse">
+              <el-collapse-item title="结构" name="structure">
+                <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
+              </el-collapse-item>
 
-            <el-collapse-item title="外观" name="appearance">
-              <el-form label-position="top" size="small" class="canvas-form">
-                <div class="compact-row">
-                  <el-form-item label="背景">
-                    <el-color-picker
-                      :model-value="sheet?.canvasSettings.backgroundColor ?? '#ffffff'"
-                      @change="(v: string | null) => v && patchCanvas({ backgroundColor: v })"
-                    />
-                  </el-form-item>
-                  <el-form-item label="纹理" class="grow">
+              <el-collapse-item title="外观" name="appearance">
+                <el-form label-position="top" size="small" class="canvas-form">
+                  <div class="compact-row">
+                    <el-form-item label="背景">
+                      <el-color-picker
+                        :model-value="sheet?.canvasSettings.backgroundColor ?? '#ffffff'"
+                        @change="(v: string | null) => patchCanvas({ backgroundColor: v ?? '#ffffff' })"
+                      />
+                    </el-form-item>
+                    <el-form-item label="纹理" class="grow">
+                      <el-select
+                        :model-value="sheet?.canvasSettings.backgroundPattern ?? 'solid'"
+                        style="width: 100%"
+                        @change="(v: Sheet['canvasSettings']['backgroundPattern']) => patchCanvas({ backgroundPattern: v })"
+                      >
+                        <el-option label="纯色" value="solid" />
+                        <el-option label="网格" value="grid" />
+                        <el-option label="点阵" value="dots" />
+                      </el-select>
+                    </el-form-item>
+                  </div>
+                  <el-form-item label="全局字体">
                     <el-select
-                      :model-value="sheet?.canvasSettings.backgroundPattern ?? 'solid'"
+                      :model-value="sheet?.canvasSettings.globalFontFamily ?? ''"
                       style="width: 100%"
-                      @change="(v: Sheet['canvasSettings']['backgroundPattern']) => patchCanvas({ backgroundPattern: v })"
+                      @change="(v: string) => patchCanvas({ globalFontFamily: v || undefined })"
                     >
-                      <el-option label="纯色" value="solid" />
-                      <el-option label="网格" value="grid" />
-                      <el-option label="点阵" value="dots" />
+                      <el-option label="默认" value="" />
+                      <el-option label="Sans" value="sans-serif" />
+                      <el-option label="Serif" value="serif" />
+                      <el-option label="等宽" value="monospace" />
                     </el-select>
                   </el-form-item>
-                </div>
-                <el-form-item label="全局字体">
-                  <el-select
-                    :model-value="sheet?.canvasSettings.globalFontFamily ?? ''"
-                    style="width: 100%"
-                    @change="(v: string) => patchCanvas({ globalFontFamily: v || undefined })"
-                  >
-                    <el-option label="默认" value="" />
-                    <el-option label="Sans" value="sans-serif" />
-                    <el-option label="Serif" value="serif" />
-                    <el-option label="等宽" value="monospace" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="画布比例">
-                  <el-select
-                    :model-value="sheet?.canvasSettings.aspectGuide ?? 'none'"
-                    style="width: 100%"
-                    @change="(v: Sheet['canvasSettings']['aspectGuide']) => patchCanvas({ aspectGuide: v })"
-                  >
-                    <el-option label="无" value="none" />
-                    <el-option label="A4" value="a4" />
-                    <el-option label="A3" value="a3" />
-                    <el-option label="16:9" value="16:9" />
-                    <el-option label="4:3" value="4:3" />
-                    <el-option label="1:1" value="1:1" />
-                  </el-select>
-                </el-form-item>
-                <div class="toggle-row">
-                  <el-checkbox
-                    :model-value="sheet?.canvasSettings.coloredBranch ?? true"
-                    @change="(v: string | number | boolean) => patchCanvas({ coloredBranch: !!v })"
-                  >
-                    彩虹分支
-                  </el-checkbox>
-                  <el-checkbox
-                    :model-value="sheet?.canvasSettings.handDrawn ?? false"
-                    @change="(v: string | number | boolean) => patchCanvas({ handDrawn: !!v })"
-                  >
-                    手绘风格
-                  </el-checkbox>
-                </div>
-              </el-form>
-              <ThemeInlinePanel v-if="sheet" :sheet="sheet" class="appearance-theme" />
-            </el-collapse-item>
-          </el-collapse>
-        </el-scrollbar>
+                  <el-form-item label="画布比例">
+                    <el-select
+                      :model-value="sheet?.canvasSettings.aspectGuide ?? 'none'"
+                      style="width: 100%"
+                      @change="(v: Sheet['canvasSettings']['aspectGuide']) => patchCanvas({ aspectGuide: v })"
+                    >
+                      <el-option label="无" value="none" />
+                      <el-option label="A4" value="a4" />
+                      <el-option label="A3" value="a3" />
+                      <el-option label="16:9" value="16:9" />
+                      <el-option label="4:3" value="4:3" />
+                      <el-option label="1:1" value="1:1" />
+                    </el-select>
+                  </el-form-item>
+                  <div class="toggle-row">
+                    <el-checkbox
+                      :model-value="sheet?.canvasSettings.coloredBranch ?? true"
+                      @change="(v: string | number | boolean) => patchCanvas({ coloredBranch: !!v })"
+                    >
+                      彩虹分支
+                    </el-checkbox>
+                    <el-checkbox
+                      :model-value="sheet?.canvasSettings.handDrawn ?? false"
+                      @change="(v: string | number | boolean) => patchCanvas({ handDrawn: !!v })"
+                    >
+                      手绘风格
+                    </el-checkbox>
+                  </div>
+                </el-form>
+                <ThemeInlinePanel v-if="sheet" :sheet="sheet" class="appearance-theme" />
+              </el-collapse-item>
+            </el-collapse>
+          </el-scrollbar>
+        </div>
       </el-tab-pane>
     </el-tabs>
+
+    <el-dialog
+      v-model="showCanvasTemplates"
+      title="画布模板"
+      width="420px"
+      append-to-body
+      destroy-on-close
+    >
+      <el-empty v-if="!canvasTemplates.length" description="暂无画布模板" />
+      <div v-else class="canvas-tpl-list">
+        <div v-for="tpl in canvasTemplates" :key="tpl.id" class="canvas-tpl-item">
+          <button type="button" class="canvas-tpl-main" @click="applyCanvasTemplate(tpl)">
+            <span class="canvas-tpl-name">{{ tpl.name }}</span>
+            <span class="canvas-tpl-date">{{ tpl.createdAt.slice(0, 10) }}</span>
+          </button>
+          <el-button text type="danger" size="small" @click.stop="removeCanvasTemplate(tpl.id)">
+            删除
+          </el-button>
+        </div>
+      </div>
+    </el-dialog>
   </aside>
 </template>
 
@@ -763,6 +878,23 @@ const borderLineType = computed({
   height: calc(100vh - 160px);
   padding: 8px 10px 16px;
 }
+.canvas-tab {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.template-bar {
+  flex-shrink: 0;
+  padding: 10px 10px 8px;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: var(--el-bg-color);
+}
+.canvas-scroll {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
 .section-title {
   font-size: 11px;
   font-weight: 600;
@@ -789,6 +921,11 @@ const borderLineType = computed({
 }
 .canvas-form :deep(.el-form-item) {
   margin-bottom: 10px;
+}
+.template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .compact-row {
   display: flex;
@@ -879,5 +1016,45 @@ const borderLineType = computed({
 }
 .mt-8 {
   margin-top: 8px;
+}
+
+.canvas-tpl-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.canvas-tpl-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 6px;
+  padding: 4px 4px 4px 0;
+}
+.canvas-tpl-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+}
+.canvas-tpl-main:hover {
+  color: var(--el-color-primary);
+}
+.canvas-tpl-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.canvas-tpl-date {
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

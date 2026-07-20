@@ -7,11 +7,16 @@ import type {
   StructureOptions,
   Topic,
 } from '../model/types.js';
-import { collectHidden, finalizeResult, LEVEL_GAP, V_GAP } from './utils.js';
+import { collectHidden, finalizeResult, V_GAP } from './utils.js';
+import { COLLAPSE_BTN_RADIUS } from '../render/collapse-button.js';
 
 const NEST_INDENT = 48;
 const BRACE_W = 18;
 const BRACE_PAD = 16;
+/** Clear the fold control between parent edge and brace. */
+const BRACE_PARENT_GAP = COLLAPSE_BTN_RADIUS * 2 + 6;
+/** Gap between brace and the children column. */
+const BRACE_CHILD_GAP = 14;
 
 interface BraceConfig {
   /** Children grow to the right of their parent. */
@@ -20,6 +25,13 @@ interface BraceConfig {
   partPosition: 'same' | 'opposite';
   /** Which side of the root/group the brace glyph sits on. */
   braceSide: 'left' | 'right';
+}
+
+interface ChildBand {
+  node: LayoutNode;
+  /** Top of the child's full subtree band (includes nested descendants). */
+  top: number;
+  height: number;
 }
 
 function readConfig(options: StructureOptions): BraceConfig {
@@ -50,31 +62,31 @@ function subtreeHeight(topic: Topic, depth: number, hiddenIds: Set<string>, meas
 
 function addBrace(
   id: string,
-  childNodes: LayoutNode[],
+  bands: ChildBand[],
   parentNode: LayoutNode,
   config: BraceConfig,
   extraShapes: ExtraShape[],
 ): void {
-  if (childNodes.length === 0) return;
-  const first = childNodes[0]!;
-  const last = childNodes[childNodes.length - 1]!;
-  // Span the children column only — classic brace-map look.
-  const braceTop = first.y;
-  const braceBottom = last.y + last.height;
-  const braceHeight = Math.max(braceBottom - braceTop, first.height);
+  if (bands.length === 0) return;
+  const first = bands[0]!;
+  const last = bands[bands.length - 1]!;
+  // Span each child's full subtree band so nested content is enclosed and the
+  // brace cusp stays vertically aligned with the parent.
+  const braceTop = first.top;
+  const braceBottom = last.top + last.height;
+  const braceHeight = Math.max(braceBottom - braceTop, first.node.height);
+
+  const childNodes = bands.map((b) => b.node);
 
   let braceX: number;
   let openSide: 'left' | 'right';
   if (config.partPosition === 'opposite') {
     if (config.braceSide === 'right') {
-      const gapStart = parentNode.x + parentNode.width;
-      const gapEnd = Math.min(...childNodes.map((n) => n.x));
-      braceX = gapStart + (gapEnd - gapStart - BRACE_W) / 2;
+      // Sit just past the parent (and fold control), not centered in a wide gap.
+      braceX = parentNode.x + parentNode.width + BRACE_PARENT_GAP;
       openSide = 'right';
     } else {
-      const gapEnd = parentNode.x;
-      const gapStart = Math.max(...childNodes.map((n) => n.x + n.width));
-      braceX = gapStart + (gapEnd - gapStart - BRACE_W) / 2;
+      braceX = parentNode.x - BRACE_PARENT_GAP - BRACE_W;
       openSide = 'left';
     }
   } else if (config.braceSide === 'right') {
@@ -87,16 +99,6 @@ function addBrace(
     openSide = 'right';
   }
 
-  const stemFromX =
-    config.partPosition === 'opposite'
-      ? config.growRight
-        ? parentNode.x + parentNode.width
-        : parentNode.x
-      : openSide === 'right'
-        ? Math.min(parentNode.x, ...childNodes.map((n) => n.x))
-        : Math.max(parentNode.x + parentNode.width, ...childNodes.map((n) => n.x + n.width));
-  const stemFromY = parentNode.y + parentNode.height / 2;
-
   extraShapes.push({
     id,
     type: 'brace',
@@ -105,8 +107,6 @@ function addBrace(
       stroke: '#6B7280',
       strokeWidth: 2,
       openSide,
-      stemFromX,
-      stemFromY,
     },
   });
 }
@@ -152,8 +152,11 @@ function layoutBraceSubtree(
 
   if (visible.length === 0) return blockH;
 
-  // Room for brace + stem between parent and parts.
-  const gap = config.partPosition === 'opposite' ? Math.max(LEVEL_GAP, BRACE_W + 48) : NEST_INDENT;
+  // Tight column: fold control + brace + children (no long stem gap).
+  const gap =
+    config.partPosition === 'opposite'
+      ? BRACE_PARENT_GAP + BRACE_W + BRACE_CHILD_GAP
+      : NEST_INDENT;
   const childX =
     config.partPosition === 'opposite'
       ? config.growRight
@@ -164,7 +167,7 @@ function layoutBraceSubtree(
         : x - NEST_INDENT;
 
   let cy = y;
-  const childNodes: LayoutNode[] = [];
+  const bands: ChildBand[] = [];
   for (const child of visible) {
     const childSize = measure(child, depth + 1);
     const placedX =
@@ -174,6 +177,7 @@ function layoutBraceSubtree(
           ? childX - childSize.width
           : childX;
 
+    const bandTop = cy;
     const h = layoutBraceSubtree(
       child,
       depth + 1,
@@ -185,11 +189,11 @@ function layoutBraceSubtree(
       nodes,
       extraShapes,
     );
-    childNodes.push(nodes.get(child.id)!);
+    bands.push({ node: nodes.get(child.id)!, top: bandTop, height: h });
     cy += h + V_GAP;
   }
 
-  addBrace(`brace-${topic.id}`, childNodes, nodes.get(topic.id)!, config, extraShapes);
+  addBrace(`brace-${topic.id}`, bands, nodes.get(topic.id)!, config, extraShapes);
   return blockH;
 }
 
@@ -226,6 +230,6 @@ export function layoutBraceMap(
     });
   }
 
-  // Brace is the connector — no parent–child tree edges.
+  // Brace is the connector — no parent–child tree edges and no stem lines.
   return finalizeResult(nodes, [], extraShapes);
 }

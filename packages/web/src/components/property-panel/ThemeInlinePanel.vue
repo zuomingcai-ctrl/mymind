@@ -59,10 +59,16 @@ function patchTopic(patch: Partial<TopicStyle>) {
   const key = activeLevel.value;
   patchTheme((t) => {
     const next: TopicStyle = { ...t.colors[key], ...patch };
-    if ('borderDash' in patch && !patch.borderDash) delete next.borderDash;
-    if ('fontFamily' in patch && !patch.fontFamily) delete next.fontFamily;
+    for (const k of Object.keys(patch) as (keyof TopicStyle)[]) {
+      if (patch[k] === undefined) delete next[k];
+    }
+    if (!next.shape) next.shape = 'rounded';
     t.colors[key] = next;
   });
+}
+
+function setTopicColor(key: 'fillColor' | 'borderColor' | 'fontColor', color: string | null) {
+  patchTopic({ [key]: color ?? undefined });
 }
 
 function dashPreset(dash: number[] | undefined, borderWidth?: number): LinePreset {
@@ -94,7 +100,10 @@ function setEdgeDashPreset(preset: LinePreset) {
 }
 
 function setBranchColor(index: number, color: string | null) {
-  if (!color) return;
+  if (!color) {
+    removeBranchColor(index);
+    return;
+  }
   patchTheme((t) => {
     const next = [...t.colors.branchColors];
     next[index] = color;
@@ -181,7 +190,7 @@ const topicPreviewStyle = computed(() => {
           <el-color-picker
             :model-value="theme.edge.color"
             size="small"
-            @change="(v: string | null) => v && patchTheme((t) => { t.edge.color = v; })"
+            @change="(v: string | null) => patchTheme((t) => { t.edge.color = v ?? '#999999'; })"
           />
         </div>
         <div class="field">
@@ -258,7 +267,7 @@ const topicPreviewStyle = computed(() => {
             :model-value="activeStyle.fillColor"
             size="small"
             show-alpha
-            @change="(v: string | null) => v && patchTopic({ fillColor: v })"
+            @change="(v: string | null) => setTopicColor('fillColor', v)"
           />
         </div>
         <div class="field">
@@ -267,7 +276,7 @@ const topicPreviewStyle = computed(() => {
             :model-value="activeStyle.borderColor"
             size="small"
             show-alpha
-            @change="(v: string | null) => v && patchTopic({ borderColor: v })"
+            @change="(v: string | null) => setTopicColor('borderColor', v)"
           />
         </div>
       </div>
@@ -301,7 +310,7 @@ const topicPreviewStyle = computed(() => {
           <el-color-picker
             :model-value="activeStyle.fontColor"
             size="small"
-            @change="(v: string | null) => v && patchTopic({ fontColor: v })"
+            @change="(v: string | null) => setTopicColor('fontColor', v)"
           />
         </div>
       </div>

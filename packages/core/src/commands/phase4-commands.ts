@@ -139,10 +139,13 @@ export class UpdateTopicStyleCommand implements Command {
     return updateSheetInDocument(state, this.sheetId, (sheet) =>
       updateTopicInSheet(sheet, this.topicId, (t) => {
         this.oldStyle = t.style ? { ...t.style } : undefined;
-        return {
-          ...t,
-          style: { shape: 'rounded', ...t.style, ...this.style },
-        };
+        const next: TopicStyle = { shape: 'rounded', ...t.style, ...this.style };
+        // Explicit undefined in the patch means "clear override" (fall back to theme).
+        for (const key of Object.keys(this.style) as (keyof TopicStyle)[]) {
+          if (this.style[key] === undefined) delete next[key];
+        }
+        if (!next.shape) next.shape = 'rounded';
+        return { ...t, style: next };
       }),
     );
   }

@@ -16,10 +16,12 @@ function openDb(): Promise<IDBDatabase> {
   });
 }
 export async function saveDocument(doc: MindMapDocument): Promise<void> {
+  // IndexedDB uses structuredClone; Vue reactive proxies are not cloneable.
+  const plain = JSON.parse(serializeDocument(doc)) as MindMapDocument;
   const db = await openDb();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(STORE, 'readwrite');
-    tx.objectStore(STORE).put(doc);
+    tx.objectStore(STORE).put(plain);
     tx.oncomplete = () => resolve();
     tx.onerror = () => reject(tx.error);
   });

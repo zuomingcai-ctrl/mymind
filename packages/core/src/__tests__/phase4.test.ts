@@ -68,6 +68,23 @@ describe('Phase 4', () => {
     expect(d.sheets[0]!.rootTopic.style?.textTransform).toBe('uppercase');
   });
 
+  it('UpdateTopicStyleCommand clears color overrides with undefined', () => {
+    const doc = createDocument();
+    const sheetId = doc.sheets[0]!.id;
+    const rootId = doc.sheets[0]!.rootTopic.id;
+    const withColor = new UpdateTopicStyleCommand(sheetId, rootId, {
+      fillColor: '#ff0000',
+      borderColor: '#00ff00',
+    }).execute(doc);
+    expect(withColor.sheets[0]!.rootTopic.style?.fillColor).toBe('#ff0000');
+    const cleared = new UpdateTopicStyleCommand(sheetId, rootId, {
+      fillColor: undefined,
+      borderColor: undefined,
+    }).execute(withColor);
+    expect(cleared.sheets[0]!.rootTopic.style).not.toHaveProperty('fillColor');
+    expect(cleared.sheets[0]!.rootTopic.style).not.toHaveProperty('borderColor');
+  });
+
   it('viewport culling reduces visible nodes', () => {
     const tree = buildTree(3, 2);
     const doc = createDocument();

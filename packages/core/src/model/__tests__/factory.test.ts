@@ -14,7 +14,11 @@ describe('createDocument', () => {
   it('createSheet defaults to mindmap structure', () => {
     const sheet = createSheet();
     expect(sheet.structure).toBe('mindmap');
-    expect(sheet.structureOptions.type).toBe('mindmap');
+    expect(sheet.structureOptions).toEqual({
+      type: 'mindmap',
+      balanced: false,
+      direction: 'right',
+    });
   });
 
   it('createDocument accepts initial structure', () => {
