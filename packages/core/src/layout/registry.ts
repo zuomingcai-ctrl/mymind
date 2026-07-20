@@ -12,6 +12,7 @@ import { layoutMatrix } from './matrix.js';
 import { layoutBraceMap } from './brace-map.js';
 import { layoutTreeTable } from './tree-table.js';
 import { layoutStructureElements } from './utils.js';
+import { getTheme } from '../theme/custom.js';
 
 export { layoutMindmap, layoutLogicChart, layoutTreeChart } from './mindmap.js';
 export { layoutTimeline } from './timeline.js';
@@ -34,9 +35,16 @@ export class LayoutRegistry {
   }
 
   layout(sheet: Sheet, measure: MeasureFn) {
+    let options = sheet.structureOptions;
+    // Logic-chart edge geometry follows canvas theme line type (UI lives under 配色).
+    if (options.type === 'logic-chart') {
+      const lineType = getTheme(sheet.canvasSettings.themeId).edge.lineType;
+      const lineStyle = lineType === 'polyline' ? 'polyline' : 'curve';
+      options = { ...options, lineStyle };
+    }
     const base = this.get(sheet.structure).layout(
       sheet.rootTopic,
-      sheet.structureOptions,
+      options,
       measure,
       { floatingTopics: sheet.floatingTopics, summaries: sheet.summaries },
     );

@@ -119,8 +119,6 @@ function onMatrixColsChange(v: number | undefined) {
       </el-select>
     </el-form-item>
 
-    <el-divider content-position="left">结构选项</el-divider>
-
     <template v-if="opts.type === 'mindmap'">
       <el-form-item label="左右平衡">
         <el-switch
@@ -150,47 +148,6 @@ function onMatrixColsChange(v: number | undefined) {
         >
           <el-option label="向左" value="left" />
           <el-option label="向右" value="right" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="连线样式">
-        <el-select
-          :model-value="opts.lineStyle ?? 'curve'"
-          style="width: 100%"
-          @change="(v: 'curve' | 'polyline') => patchLogic({ lineStyle: v })"
-        >
-          <el-option label="曲线" value="curve" />
-          <el-option label="折线" value="polyline" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="节点显示">
-        <el-select
-          :model-value="opts.nodeDisplay ?? 'mixed'"
-          style="width: 100%"
-          @change="(v: 'box' | 'underline' | 'mixed') => patchLogic({ nodeDisplay: v })"
-        >
-          <el-option label="方框" value="box" />
-          <el-option label="下划线" value="underline" />
-          <el-option label="混合" value="mixed" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="叶子分组">
-        <el-select
-          :model-value="opts.groupLeaves ?? 'none'"
-          style="width: 100%"
-          @change="(v: 'none' | 'brace') => patchLogic({ groupLeaves: v })"
-        >
-          <el-option label="无" value="none" />
-          <el-option label="括号" value="brace" />
-        </el-select>
-      </el-form-item>
-      <el-form-item label="根节点显示">
-        <el-select
-          :model-value="opts.rootDisplay ?? 'box'"
-          style="width: 100%"
-          @change="(v: 'box' | 'underline') => patchLogic({ rootDisplay: v })"
-        >
-          <el-option label="方框" value="box" />
-          <el-option label="下划线" value="underline" />
         </el-select>
       </el-form-item>
     </template>
@@ -364,7 +321,7 @@ function onMatrixColsChange(v: number | undefined) {
 
 <style scoped>
 .structure-picker {
-  padding: 0 4px 12px;
+  padding: 0;
 }
 .column-list {
   display: flex;

@@ -30,6 +30,7 @@ import {
   estimateLabelChipWidth,
   findTopicInSheet,
   findTopicByCalloutId,
+  isInFloatingTopicTree,
   calloutBoundsFromOffset,
   topicCalloutAnchor,
   todoCompletionRate,
@@ -204,14 +205,41 @@ function measure(topic: Topic, depth: number) {
 
 function resolveLineType(sheet: Sheet): EdgeStyle['lineType'] {
   const opts = sheet.structureOptions;
-  if (opts.type === 'logic-chart') {
-    return opts.lineStyle === 'polyline' ? 'polyline' : 'curve';
-  }
   // Fishbone bones/ribs are geometric straight segments (Ishikawa), never theme curves.
   if (opts.type === 'fishbone') {
     return 'straight';
   }
   return getTheme(sheet.canvasSettings.themeId).edge.lineType;
+}
+
+/** Map each topic id to its rainbow-branch color (from root's main-branch index). */
+function buildBranchColorMap(sheet: Sheet, branchColors: string[]): Map<string, string> {
+  const map = new Map<string, string>();
+  if (!branchColors.length) return map;
+
+  function paint(topic: Topic, color: string) {
+    map.set(topic.id, color);
+    for (const child of topic.children) paint(child, color);
+  }
+
+  sheet.rootTopic.children.forEach((child, i) => {
+    paint(child, branchColors[i % branchColors.length]!);
+  });
+  return map;
+}
+
+function resolveTopicBaseStyle(
+  sheet: Sheet,
+  theme: ReturnType<typeof getTheme>,
+  topicId: string,
+  depth: number,
+): TopicStyle {
+  if (isInFloatingTopicTree(sheet, topicId)) {
+    return theme.colors.floatingTopic;
+  }
+  if (depth === 0) return theme.colors.centralTopic;
+  if (depth === 1) return theme.colors.mainTopic;
+  return theme.colors.subTopic;
 }
 
 function drawDecorations(
@@ -657,6 +685,10 @@ function draw() {
   const layout = registry.layout(sheet, measure);
   const theme = getTheme(sheet.canvasSettings.themeId);
   const lineType = resolveLineType(sheet);
+  const branchColors = buildBranchColorMap(
+    sheet,
+    sheet.canvasSettings.coloredBranch ? theme.colors.branchColors : [],
+  );
   const frame = buildFrame(sheet, layout, theme.colors.background);
   const bg = sheet.canvasSettings.backgroundColor || theme.colors.background;
 
@@ -708,15 +740,19 @@ function draw() {
           edge.type === 'relationship'
             ? sheet.relationships.find((r) => r.id === edge.id)
             : undefined;
+        const treeColor =
+          branchColors.get(edge.to) ?? branchColors.get(edge.from) ?? theme.edge.color;
         strokeEdge(ctx, edge, {
-          color: rel?.style?.color ?? '#E67E22',
+          color: rel?.style?.color ?? (edge.type === 'relationship' ? '#E67E22' : treeColor),
           width: theme.edge.width,
           lineType,
           dash: sheet.canvasSettings.handDrawn ? [3, 2] : theme.edge.dash,
           selected,
           label: rel?.title,
-          arrowStart: rel?.style?.arrowStart,
-          arrowEnd: rel?.style?.arrowEnd ?? true,
+          arrowStart:
+            edge.type === 'relationship' ? rel?.style?.arrowStart : theme.edge.arrowStart,
+          arrowEnd:
+            edge.type === 'relationship' ? (rel?.style?.arrowEnd ?? true) : theme.edge.arrowEnd,
           skipArrows: edge.type === 'relationship',
         });
         if (
@@ -733,12 +769,11 @@ function draw() {
         if (props.visibleTopicIds && !props.visibleTopicIds.has(node.id)) continue;
         const topic = layer.topics.get(node.id);
         if (!topic) continue;
-        const base =
-          node.depth === 0
-            ? theme.colors.centralTopic
-            : node.depth === 1
-              ? theme.colors.mainTopic
-              : theme.colors.subTopic;
+        let base = resolveTopicBaseStyle(sheet, theme, node.id, node.depth);
+        const branchTint = branchColors.get(node.id);
+        if (branchTint && node.depth >= 1) {
+          base = { ...base, borderColor: branchTint };
+        }
 
         drawTopicNode(
           ctx,

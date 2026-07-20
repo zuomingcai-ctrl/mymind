@@ -1,18 +1,10 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, computed } from 'vue';
-import type { Sheet, Topic, TopicStyle, EdgeStyle, Theme } from '@mymind/core';
+import type { Sheet, Topic, TopicStyle, EdgeStyle } from '@mymind/core';
 import {
   UpdateNoteCommand,
   AddLabelCommand,
   DeleteLabelCommand,
-  UpdateThemeCommand,
-  ClearThemeUsagesCommand,
-  listAllThemes,
-  loadCustomThemes,
-  saveCustomTheme,
-  deleteCustomTheme,
-  getTheme,
-  BUILTIN_THEMES,
   ToggleTodoCommand,
   DeleteTodoCommand,
   ReorderTodosCommand,
@@ -35,7 +27,7 @@ import {
 } from '@mymind/core';
 import { useDocument } from '../../composables/useDocument';
 import StructurePicker from './StructurePicker.vue';
-import CustomThemeDialog from './CustomThemeDialog.vue';
+import ThemeInlinePanel from './ThemeInlinePanel.vue';
 import { Top, Bottom, Close, Plus } from '@element-plus/icons-vue';
 import type { StructureSelectionKind } from '../canvas/CanvasView.vue';
 
@@ -53,21 +45,9 @@ const emit = defineEmits<{
 
 const activeTab = ref('style');
 const { dispatch } = useDocument();
-const themes = ref<Theme[]>(listAllThemes());
-const customThemeDialog = ref(false);
-const customThemeSource = ref<Theme>(BUILTIN_THEMES[0]!);
-const customThemeEditExisting = ref(false);
 const markers = listMarkers();
+const canvasSections = ref(['structure', 'appearance']);
 
-const isCustomThemeSelected = computed(() => {
-  const id = props.sheet?.canvasSettings.themeId;
-  if (!id) return false;
-  return loadCustomThemes().some((t) => t.id === id);
-});
-
-function refreshThemes() {
-  themes.value = listAllThemes();
-}
 const noteRef = ref<{ focus: () => void } | null>(null);
 const commentRef = ref<{ focus: () => void; input?: HTMLInputElement } | null>(null);
 const equationRef = ref<{ focus: () => void } | null>(null);
@@ -165,33 +145,6 @@ function addLabel() {
 function removeLabel(labelId: string) {
   if (!props.sheet || !props.selectedId) return;
   dispatch(new DeleteLabelCommand(props.sheet.id, props.selectedId, labelId));
-}
-
-function onThemeChange(themeId: string) {
-  if (!props.sheet) return;
-  dispatch(new UpdateThemeCommand(props.sheet.id, themeId));
-}
-
-function openCustomThemeDialog(editExisting = false) {
-  const current = props.sheet ? getTheme(props.sheet.canvasSettings.themeId) : BUILTIN_THEMES[0]!;
-  customThemeSource.value = structuredClone(current);
-  customThemeEditExisting.value = editExisting && isCustomThemeSelected.value;
-  customThemeDialog.value = true;
-}
-
-function onCustomThemeSave(theme: Theme) {
-  if (!props.sheet) return;
-  saveCustomTheme(theme);
-  refreshThemes();
-  dispatch(new UpdateThemeCommand(props.sheet.id, theme.id));
-}
-
-function removeSelectedCustomTheme() {
-  if (!props.sheet || !isCustomThemeSelected.value) return;
-  const id = props.sheet.canvasSettings.themeId;
-  deleteCustomTheme(id);
-  refreshThemes();
-  dispatch(new ClearThemeUsagesCommand(id, 'default'));
 }
 
 function patchCanvas(patch: Partial<Sheet['canvasSettings']>) {
@@ -697,121 +650,81 @@ const borderLineType = computed({
         </el-scrollbar>
       </el-tab-pane>
 
-      <el-tab-pane label="结构" name="structure">
-        <template #label>
-          <span data-testid="tab-structure">结构</span>
-        </template>
-        <el-scrollbar class="tab-scroll">
-          <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
-        </el-scrollbar>
-      </el-tab-pane>
-
       <el-tab-pane label="画布" name="canvas">
         <template #label>
           <span data-testid="tab-canvas">画布</span>
         </template>
         <el-scrollbar class="tab-scroll">
-          <el-form label-position="top" size="small">
-            <el-form-item label="主题">
-              <div class="theme-row">
-                <el-select
-                  data-testid="canvas-theme-select"
-                  :model-value="sheet?.canvasSettings.themeId ?? 'default'"
-                  style="flex: 1"
-                  @change="onThemeChange"
-                >
-                  <el-option
-                    v-for="theme in themes"
-                    :key="theme.id"
-                    :label="theme.name"
-                    :value="theme.id"
-                  />
-                </el-select>
-                <el-button size="small" @click="openCustomThemeDialog(false)">新建</el-button>
-                <el-button
-                  v-if="isCustomThemeSelected"
-                  size="small"
-                  @click="openCustomThemeDialog(true)"
-                >
-                  编辑
-                </el-button>
-                <el-button
-                  v-if="isCustomThemeSelected"
-                  size="small"
-                  type="danger"
-                  plain
-                  @click="removeSelectedCustomTheme"
-                >
-                  删除
-                </el-button>
-              </div>
-            </el-form-item>
-            <CustomThemeDialog
-              v-model="customThemeDialog"
-              :source="customThemeSource"
-              :edit-existing="customThemeEditExisting"
-              @save="onCustomThemeSave"
-            />
-            <el-form-item label="背景颜色">
-              <el-color-picker
-                :model-value="sheet?.canvasSettings.backgroundColor ?? '#ffffff'"
-                @change="(v: string | null) => v && patchCanvas({ backgroundColor: v })"
-              />
-            </el-form-item>
-            <el-form-item label="背景纹理">
-              <el-select
-                :model-value="sheet?.canvasSettings.backgroundPattern ?? 'solid'"
-                style="width: 100%"
-                @change="(v: Sheet['canvasSettings']['backgroundPattern']) => patchCanvas({ backgroundPattern: v })"
-              >
-                <el-option label="纯色" value="solid" />
-                <el-option label="网格" value="grid" />
-                <el-option label="点阵" value="dots" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="全局字体">
-              <el-select
-                :model-value="sheet?.canvasSettings.globalFontFamily ?? ''"
-                style="width: 100%"
-                @change="(v: string) => patchCanvas({ globalFontFamily: v || undefined })"
-              >
-                <el-option label="默认" value="" />
-                <el-option label="Sans" value="sans-serif" />
-                <el-option label="Serif" value="serif" />
-                <el-option label="等宽" value="monospace" />
-              </el-select>
-            </el-form-item>
-            <el-form-item>
-              <el-checkbox
-                :model-value="sheet?.canvasSettings.coloredBranch ?? true"
-                @change="(v: string | number | boolean) => patchCanvas({ coloredBranch: !!v })"
-              >
-                彩虹分支
-              </el-checkbox>
-            </el-form-item>
-            <el-form-item>
-              <el-checkbox
-                :model-value="sheet?.canvasSettings.handDrawn ?? false"
-                @change="(v: string | number | boolean) => patchCanvas({ handDrawn: !!v })"
-              >
-                手绘风格
-              </el-checkbox>
-            </el-form-item>
-            <el-form-item label="画布比例">
-              <el-select
-                :model-value="sheet?.canvasSettings.aspectGuide ?? 'none'"
-                style="width: 100%"
-                @change="(v: Sheet['canvasSettings']['aspectGuide']) => patchCanvas({ aspectGuide: v })"
-              >
-                <el-option label="无" value="none" />
-                <el-option label="A4" value="a4" />
-                <el-option label="A3" value="a3" />
-                <el-option label="16:9" value="16:9" />
-                <el-option label="4:3" value="4:3" />
-                <el-option label="1:1" value="1:1" />
-              </el-select>
-            </el-form-item>
-          </el-form>
+          <el-collapse v-model="canvasSections" class="canvas-collapse">
+            <el-collapse-item title="结构" name="structure">
+              <StructurePicker v-if="sheet" :sheet-id="sheet.id" :sheet="sheet" />
+            </el-collapse-item>
+
+            <el-collapse-item title="外观" name="appearance">
+              <el-form label-position="top" size="small" class="canvas-form">
+                <div class="compact-row">
+                  <el-form-item label="背景">
+                    <el-color-picker
+                      :model-value="sheet?.canvasSettings.backgroundColor ?? '#ffffff'"
+                      @change="(v: string | null) => v && patchCanvas({ backgroundColor: v })"
+                    />
+                  </el-form-item>
+                  <el-form-item label="纹理" class="grow">
+                    <el-select
+                      :model-value="sheet?.canvasSettings.backgroundPattern ?? 'solid'"
+                      style="width: 100%"
+                      @change="(v: Sheet['canvasSettings']['backgroundPattern']) => patchCanvas({ backgroundPattern: v })"
+                    >
+                      <el-option label="纯色" value="solid" />
+                      <el-option label="网格" value="grid" />
+                      <el-option label="点阵" value="dots" />
+                    </el-select>
+                  </el-form-item>
+                </div>
+                <el-form-item label="全局字体">
+                  <el-select
+                    :model-value="sheet?.canvasSettings.globalFontFamily ?? ''"
+                    style="width: 100%"
+                    @change="(v: string) => patchCanvas({ globalFontFamily: v || undefined })"
+                  >
+                    <el-option label="默认" value="" />
+                    <el-option label="Sans" value="sans-serif" />
+                    <el-option label="Serif" value="serif" />
+                    <el-option label="等宽" value="monospace" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="画布比例">
+                  <el-select
+                    :model-value="sheet?.canvasSettings.aspectGuide ?? 'none'"
+                    style="width: 100%"
+                    @change="(v: Sheet['canvasSettings']['aspectGuide']) => patchCanvas({ aspectGuide: v })"
+                  >
+                    <el-option label="无" value="none" />
+                    <el-option label="A4" value="a4" />
+                    <el-option label="A3" value="a3" />
+                    <el-option label="16:9" value="16:9" />
+                    <el-option label="4:3" value="4:3" />
+                    <el-option label="1:1" value="1:1" />
+                  </el-select>
+                </el-form-item>
+                <div class="toggle-row">
+                  <el-checkbox
+                    :model-value="sheet?.canvasSettings.coloredBranch ?? true"
+                    @change="(v: string | number | boolean) => patchCanvas({ coloredBranch: !!v })"
+                  >
+                    彩虹分支
+                  </el-checkbox>
+                  <el-checkbox
+                    :model-value="sheet?.canvasSettings.handDrawn ?? false"
+                    @change="(v: string | number | boolean) => patchCanvas({ handDrawn: !!v })"
+                  >
+                    手绘风格
+                  </el-checkbox>
+                </div>
+              </el-form>
+              <ThemeInlinePanel v-if="sheet" :sheet="sheet" class="appearance-theme" />
+            </el-collapse-item>
+          </el-collapse>
         </el-scrollbar>
       </el-tab-pane>
     </el-tabs>
@@ -828,12 +741,6 @@ const borderLineType = computed({
   flex-direction: column;
   max-height: 100%;
   overflow: hidden;
-}
-.theme-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
 }
 .panel-tabs {
   height: 100%;
@@ -854,7 +761,7 @@ const borderLineType = computed({
 }
 .tab-scroll {
   height: calc(100vh - 160px);
-  padding: 12px;
+  padding: 8px 10px 16px;
 }
 .section-title {
   font-size: 11px;
@@ -862,6 +769,45 @@ const borderLineType = computed({
   color: var(--el-text-color-secondary);
   margin: 8px 0 6px;
   text-transform: uppercase;
+}
+.canvas-collapse {
+  border: none;
+}
+.canvas-collapse :deep(.el-collapse-item__header) {
+  height: 36px;
+  line-height: 36px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  border-bottom-color: var(--el-border-color-lighter);
+}
+.canvas-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom-color: var(--el-border-color-lighter);
+}
+.canvas-collapse :deep(.el-collapse-item__content) {
+  padding: 8px 2px 14px;
+}
+.canvas-form :deep(.el-form-item) {
+  margin-bottom: 10px;
+}
+.compact-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.compact-row .grow {
+  flex: 1;
+  min-width: 0;
+}
+.toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  padding-top: 2px;
+  margin-bottom: 4px;
+}
+.appearance-theme {
+  margin-top: 12px;
 }
 .preview {
   margin-bottom: 12px;

@@ -8,4 +8,5 @@ packages/web/src/**/*.js
 packages/web/src/**/*.js.map
 packages/web/src/**/*.d.ts
 packages/web/src/**/*.d.ts.map
+packages/desktop/
 !packages/web/env.d.ts
