@@ -34,9 +34,9 @@ function measureRib(
   depth: number,
   measure: MeasureFn,
 ): { width: number; height: number } {
-  // Underline ribs: short height, width follows real text (CJK-safe autosize).
+  // Underline ribs: strip box padding so the line sits under glyphs, not through them.
   const size = measure(topic, depth);
-  return { width: size.width, height: Math.max(14, Math.round(size.height * 0.45)) };
+  return { width: size.width, height: Math.max(20, size.height - 12) };
 }
 
 function horizontalExtent(

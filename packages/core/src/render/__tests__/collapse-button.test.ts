@@ -64,15 +64,61 @@ describe('collapse-button', () => {
     });
   });
 
-  it('inferCollapseSide uses majority child direction', () => {
+  it('inferCollapseSide uses edge exit direction', () => {
     const parent = node('p', 0, 0, 80, 30);
     const c1 = node('c1', 120, -20);
     const c2 = node('c2', 120, 40);
     const layout = emptyLayout([parent, c1, c2], [
-      { id: 'e1', from: 'p', to: 'c1', points: [], type: 'tree' },
-      { id: 'e2', from: 'p', to: 'c2', points: [], type: 'tree' },
+      {
+        id: 'e1',
+        from: 'p',
+        to: 'c1',
+        points: [
+          { x: 80, y: 15 },
+          { x: 100, y: 15 },
+          { x: 120, y: -5 },
+        ],
+        type: 'tree',
+      },
+      {
+        id: 'e2',
+        from: 'p',
+        to: 'c2',
+        points: [
+          { x: 80, y: 15 },
+          { x: 100, y: 15 },
+          { x: 120, y: 55 },
+        ],
+        type: 'tree',
+      },
     ]);
     expect(inferCollapseSide('p', parent, layout, 'mindmap')).toBe('right');
+  });
+
+  it('inferCollapseSide stays bottom for wide tree-chart sibling rows', () => {
+    // Parent above a wide row: child centers are mostly left/right of parent,
+    // but connectors leave from the bottom (vertical tree edges).
+    const parent = node('p', 200, 0, 80, 30);
+    const children = [
+      node('c0', 0, 80),
+      node('c1', 100, 80),
+      node('c2', 200, 80),
+      node('c3', 300, 80),
+      node('c4', 400, 80),
+    ];
+    const layout = emptyLayout([parent, ...children], children.map((c) => ({
+      id: `e-${c.id}`,
+      from: 'p',
+      to: c.id,
+      points: [
+        { x: 240, y: 30 },
+        { x: 240, y: 55 },
+        { x: c.x + c.width / 2, y: 55 },
+        { x: c.x + c.width / 2, y: 80 },
+      ],
+      type: 'tree' as const,
+    })));
+    expect(inferCollapseSide('p', parent, layout, 'tree-chart')).toBe('bottom');
   });
 
   it('layoutCollapseButton is null for leaves', () => {

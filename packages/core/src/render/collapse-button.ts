@@ -57,12 +57,14 @@ export function defaultCollapseSide(
 }
 
 /**
- * Infer which edge of the topic faces its children from tree edges,
- * falling back to structure defaults when collapsed / leaf-hidden.
+ * Infer which edge of the topic faces its children from where tree edges
+ * leave the parent (first segment), not from child centers — otherwise a
+ * wide sibling row below a tree-chart parent votes "left/right" and the
+ * fold control jumps to the side.
  */
 export function inferCollapseSide(
   topicId: string,
-  node: LayoutNode,
+  _node: LayoutNode,
   layout: LayoutResult,
   structure: StructureType,
   options?: StructureOptions,
@@ -76,24 +78,14 @@ export function inferCollapseSide(
   let right = 0;
   let top = 0;
   let bottom = 0;
-  const midX = node.x + node.width / 2;
-  const midY = node.y + node.height / 2;
 
   for (const edge of childEdges) {
-    const child = layout.nodes.get(edge.to);
-    if (!child) continue;
-    const cx = child.x + child.width / 2;
-    const cy = child.y + child.height / 2;
-    const dx = cx - midX;
-    const dy = cy - midY;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      if (dx >= 0) right += 1;
-      else left += 1;
-    } else if (dy >= 0) {
-      bottom += 1;
-    } else {
-      top += 1;
-    }
+    const side = exitSideFromEdge(edge.points);
+    if (!side) continue;
+    if (side === 'left') left += 1;
+    else if (side === 'right') right += 1;
+    else if (side === 'top') top += 1;
+    else bottom += 1;
   }
 
   const scores: Array<[CollapseSide, number]> = [
@@ -105,6 +97,18 @@ export function inferCollapseSide(
   scores.sort((a, b) => b[1] - a[1]);
   if (scores[0]![1] > 0) return scores[0]![0];
   return defaultCollapseSide(structure, options);
+}
+
+/** Direction the connector leaves the parent, from its first segment. */
+function exitSideFromEdge(points: Point[]): CollapseSide | null {
+  if (points.length < 2) return null;
+  const p0 = points[0]!;
+  const p1 = points[1]!;
+  const dx = p1.x - p0.x;
+  const dy = p1.y - p0.y;
+  if (dx === 0 && dy === 0) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? 'right' : 'left';
+  return dy >= 0 ? 'bottom' : 'top';
 }
 
 export function collapseButtonCenter(

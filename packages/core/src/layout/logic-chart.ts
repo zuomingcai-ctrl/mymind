@@ -74,10 +74,16 @@ function measureLogicNode(
 ) {
   const size = measure(topic, depth);
   if (display === 'underline') {
-    // Keep underline visual short, but width must follow real text (CJK-safe autosize).
-    return { width: size.width, height: Math.max(14, Math.round(size.height * 0.45)) };
+    // Strip box vertical padding only — height must still fit the glyphs so the
+    // underline sits under the text (0.45× was too short and looked like strikethrough).
+    return { width: size.width, height: Math.max(20, size.height - 12) };
   }
   return size;
+}
+
+/** Underline topics connect on the baseline; boxes connect at mid-height. */
+function edgeAnchorY(node: { y: number; height: number; display?: 'box' | 'underline' }): number {
+  return node.display === 'underline' ? node.y + node.height : node.y + node.height / 2;
 }
 
 export function layoutLogicChart(
@@ -169,9 +175,9 @@ export function layoutLogicChart(
         parentId,
         topic.id,
         fromX,
-        parent.y + parent.height / 2,
+        edgeAnchorY(parent),
         toX,
-        nodeY + size.height / 2,
+        edgeAnchorY({ y: nodeY, height: size.height, display }),
       );
     }
 

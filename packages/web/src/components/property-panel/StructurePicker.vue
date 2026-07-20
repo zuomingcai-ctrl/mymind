@@ -93,7 +93,7 @@ function onMatrixSize(rows: number, cols: number) {
 
 <template>
   <el-form label-position="top" size="small" class="structure-picker">
-    <el-form-item label="StructureType">
+    <el-form-item label="结构类型">
       <el-select
         data-testid="structure-type-select"
         :model-value="sheet.structure"
@@ -109,7 +109,7 @@ function onMatrixSize(rows: number, cols: number) {
       </el-select>
     </el-form-item>
 
-    <el-divider content-position="left">StructureOptions</el-divider>
+    <el-divider content-position="left">结构选项</el-divider>
 
     <template v-if="opts.type === 'mindmap'">
       <el-form-item label="左右平衡">

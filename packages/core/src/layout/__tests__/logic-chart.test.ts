@@ -68,6 +68,32 @@ describe('logic-chart layout', () => {
     expect(leaf.width).toBeGreaterThanOrEqual(80);
   });
 
+  it('underline nodes keep enough height so the line sits under text', () => {
+    const doc = createDocument('x', 'logic-chart');
+    const sheet = doc.sheets[0]!;
+    const d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, '分支主题').execute(doc);
+    const childId = d.sheets[0]!.rootTopic.children[0]!.id;
+    const full = measure(d.sheets[0]!.rootTopic.children[0]!, 1);
+    const result = layoutLogicChart(d.sheets[0]!.rootTopic, d.sheets[0]!.structureOptions, measure);
+    const leaf = result.nodes.get(childId)!;
+    expect(leaf.display).toBe('underline');
+    // Must stay near one line-height (not ~0.45× box which cut through glyphs).
+    expect(leaf.height).toBeGreaterThanOrEqual(20);
+    expect(leaf.height).toBeLessThanOrEqual(full.height);
+  });
+
+  it('connects underline topics on the baseline', () => {
+    const doc = createDocument('x', 'logic-chart');
+    const sheet = doc.sheets[0]!;
+    const d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, '分支主题').execute(doc);
+    const childId = d.sheets[0]!.rootTopic.children[0]!.id;
+    const result = layoutLogicChart(d.sheets[0]!.rootTopic, d.sheets[0]!.structureOptions, measure);
+    const leaf = result.nodes.get(childId)!;
+    const edge = result.edges.find((e) => e.to === childId)!;
+    const end = edge.points[edge.points.length - 1]!;
+    expect(end.y).toBe(leaf.y + leaf.height);
+  });
+
   it('uses polyline edges when configured', () => {
     const doc = createDocument('x', 'logic-chart');
     const sheet = doc.sheets[0]!;
