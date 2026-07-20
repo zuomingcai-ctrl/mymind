@@ -48,6 +48,12 @@ describe('extra v1 features', () => {
   it('marker catalog has categories', () => {
     expect(listMarkers().length).toBeGreaterThan(20);
     expect(listMarkers('priority').length).toBe(7);
+    expect(listMarkers('tag').length).toBe(7);
+    expect(listMarkers('progress').length).toBe(7);
+    expect(listMarkers('flag').length).toBe(7);
+    expect(listMarkers('star').length).toBe(7);
+    expect(listMarkers('people').length).toBe(7);
+    expect(listMarkers('symbol').length).toBe(16);
   });
 
   it('templates >= 20', () => {

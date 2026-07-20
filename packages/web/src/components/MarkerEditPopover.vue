@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted } from 'vue';
 import { Delete } from '@element-plus/icons-vue';
-import { getMarker, listMarkers, markerGlyph, type MarkerPreset } from '@mymind/core';
+import { getMarker, listMarkers, type MarkerPreset } from '@mymind/core';
+import MarkerIcon from './MarkerIcon.vue';
 
 const props = defineProps<{
   topicId: string;
@@ -66,7 +67,7 @@ onUnmounted(() => {
         :title="m.label"
         @click="emit('switch', m.id)"
       >
-        {{ markerGlyph(m.id) }}
+        <MarkerIcon :preset="m" :size="20" />
       </button>
       <span class="sep" />
       <button type="button" class="mark-btn danger" title="删除标记" @click="emit('remove')">
@@ -84,7 +85,7 @@ onUnmounted(() => {
   background: #fff;
   border-radius: 10px;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.14);
-  padding: 8px 10px;
+  padding: 6px 8px;
   border: 1px solid var(--el-border-color-lighter);
 }
 .caret {
@@ -102,14 +103,16 @@ onUnmounted(() => {
 .row {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
   position: relative;
+  flex-wrap: wrap;
+  max-width: 280px;
 }
 .mark-btn {
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   border: none;
-  border-radius: 6px;
+  border-radius: 4px;
   background: transparent;
   cursor: pointer;
   font-size: 16px;

@@ -23,12 +23,11 @@ import {
   beginHandDrawnDiamond,
   beginHandDrawnLine,
   seedForId,
-  markerGlyph,
+  drawMarker,
   layoutMarkerHits,
   layoutTopicContent,
   listTopicAccessories,
   accessoryGlyph,
-  PRIORITY_COLORS,
   MARKER_SIZE,
   ACCESSORY_SIZE,
   LABEL_CHIP_H,
@@ -470,28 +469,8 @@ function drawInnerMarkers(
   if (!markers.length) return;
   let ox = origin.x;
   for (const id of markers) {
-    const color = PRIORITY_COLORS[id];
-    if (color) {
-      const num = id.replace('priority-', '');
-      ctx.beginPath();
-      ctx.fillStyle = color;
-      ctx.arc(ox + MARKER_SIZE / 2, origin.y + MARKER_SIZE / 2, MARKER_SIZE / 2 - 0.5, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 10px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(num, ox + MARKER_SIZE / 2, origin.y + MARKER_SIZE / 2 + 0.5);
-      ox += MARKER_SIZE + 3;
-    } else {
-      ctx.font = '13px sans-serif';
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#333';
-      const glyph = markerGlyph(id);
-      ctx.fillText(glyph, ox, origin.y + MARKER_SIZE / 2);
-      ox += Math.max(MARKER_SIZE, ctx.measureText(glyph).width) + 3;
-    }
+    drawMarker(ctx, id, ox, origin.y, MARKER_SIZE);
+    ox += MARKER_SIZE + 3;
   }
 }
 
@@ -647,13 +626,6 @@ function hitTestMarkerAt(
   sheet: Sheet,
 ): { topicId: string; markerId: string; hit: MarkerHitRect } | null {
   const layout = registry.layout(sheet, measure);
-  const measureCtx = canvasRef.value?.getContext('2d');
-  if (measureCtx) {
-    measureCtx.font = '12px sans-serif';
-  }
-  const measureGlyph = (g: string) =>
-    measureCtx ? measureCtx.measureText(g).width : Math.max(14, [...g].length * 12);
-
   const nodes = [...layout.nodes.values()].filter((n) => !n.hidden).reverse();
   for (const node of nodes) {
     const topic = findTopicInSheet(sheet, node.id);
@@ -663,7 +635,6 @@ function hitTestMarkerAt(
       topic.markers,
       content.markersOrigin.x,
       content.markersOrigin.y,
-      measureGlyph,
     );
     for (let i = hits.length - 1; i >= 0; i--) {
       const h = hits[i]!;

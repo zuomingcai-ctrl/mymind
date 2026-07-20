@@ -18,7 +18,6 @@ import {
   AddMarkerCommand,
   DeleteMarkerCommand,
   listMarkers,
-  markerGlyph,
   UpdateZoneStyleCommand,
   UpdateAudioCommand,
   UpdateRelationshipTitleCommand,
@@ -35,6 +34,7 @@ import { ElMessage, ElMessageBox } from 'element-plus';
 import { useDocument } from '../../composables/useDocument';
 import StructurePicker from './StructurePicker.vue';
 import ThemeInlinePanel from './ThemeInlinePanel.vue';
+import MarkerIcon from '../MarkerIcon.vue';
 import { Top, Bottom, Close, Plus } from '@element-plus/icons-vue';
 import type { StructureSelectionKind } from '../canvas/CanvasView.vue';
 
@@ -537,14 +537,17 @@ const borderLineType = computed({
 
             <div class="section-title">标记</div>
             <div class="markers">
-              <el-check-tag
+              <button
                 v-for="m in markers"
                 :key="m.id"
-                :checked="!!selectedTopic()?.markers.includes(m.id)"
-                @change="toggleMarker(m.id)"
+                type="button"
+                class="marker-chip"
+                :class="{ active: !!selectedTopic()?.markers.includes(m.id) }"
+                :title="m.label"
+                @click="toggleMarker(m.id)"
               >
-                {{ markerGlyph(m.id) }}
-              </el-check-tag>
+                <MarkerIcon :preset="m" :size="20" />
+              </button>
             </div>
 
             <div class="section-title">内容</div>
@@ -966,8 +969,27 @@ const borderLineType = computed({
 .markers {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 2px;
   margin-bottom: 12px;
+}
+.marker-chip {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.marker-chip:hover {
+  background: var(--el-fill-color-light);
+}
+.marker-chip.active {
+  background: var(--el-color-primary-light-9);
+  border-color: var(--el-color-primary);
 }
 .labels {
   display: flex;

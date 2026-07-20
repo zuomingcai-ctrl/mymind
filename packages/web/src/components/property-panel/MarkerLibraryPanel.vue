@@ -6,9 +6,9 @@ import {
   DeleteMarkerCommand,
   listMarkers,
   listDecorationAssets,
-  markerGlyph,
 } from '@mymind/core';
 import { useDocument } from '../../composables/useDocument';
+import MarkerIcon from '../MarkerIcon.vue';
 
 const props = defineProps<{
   sheet: Sheet | null;
@@ -24,10 +24,9 @@ const { dispatch } = useDocument();
 const activeTab = ref(props.initialTab ?? 'markers');
 
 const CATEGORY_LABELS: Record<MarkerPreset['category'], string> = {
+  tag: '标签',
   priority: '优先级',
   progress: '任务',
-  emoji: '表情',
-  arrow: '箭头',
   flag: '旗帜',
   star: '星星',
   people: '人像',
@@ -35,14 +34,13 @@ const CATEGORY_LABELS: Record<MarkerPreset['category'], string> = {
 };
 
 const CATEGORY_ORDER: MarkerPreset['category'][] = [
+  'tag',
   'priority',
   'progress',
   'flag',
   'star',
   'people',
   'symbol',
-  'emoji',
-  'arrow',
 ];
 
 const expandedCategories = ref<string[]>([...CATEGORY_ORDER]);
@@ -123,7 +121,7 @@ function addDecoration(asset: DecorationAsset) {
                 :disabled="!selectedId"
                 @click="toggleMarker(m.id)"
               >
-                <span class="glyph">{{ markerGlyph(m.id) }}</span>
+                <MarkerIcon :preset="m" :size="24" />
               </button>
             </div>
           </el-collapse-item>
@@ -198,31 +196,31 @@ function addDecoration(asset: DecorationAsset) {
 }
 .library-scroll {
   flex: 1;
-  padding: 8px 12px 16px;
+  padding: 4px 10px 12px;
   height: calc(100vh - 160px);
 }
 .hint {
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 .hint-text {
-  margin: 0 0 10px;
+  margin: 0 0 8px;
   font-size: 12px;
   color: var(--el-text-color-secondary);
 }
 .icon-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 2px;
 }
 .asset-grid {
-  gap: 10px;
+  gap: 8px;
 }
 .icon-btn {
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
   border: 1px solid transparent;
-  border-radius: 8px;
-  background: var(--el-fill-color-light);
+  border-radius: 4px;
+  background: transparent;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
@@ -231,8 +229,8 @@ function addDecoration(asset: DecorationAsset) {
   transition: background 0.15s, border-color 0.15s;
 }
 .icon-btn:hover:not(:disabled) {
-  background: var(--el-fill-color);
-  border-color: var(--el-border-color);
+  background: var(--el-fill-color-light);
+  border-color: var(--el-border-color-lighter);
 }
 .icon-btn.active {
   background: var(--el-color-primary-light-9);
@@ -248,6 +246,7 @@ function addDecoration(asset: DecorationAsset) {
   height: 72px;
   flex-direction: column;
   gap: 4px;
+  background: var(--el-fill-color-light);
 }
 .glyph {
   font-size: 18px;
@@ -265,12 +264,15 @@ function addDecoration(asset: DecorationAsset) {
   white-space: nowrap;
 }
 .marker-library :deep(.el-collapse-item__header) {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  height: 36px;
-  line-height: 36px;
+  height: 28px;
+  line-height: 28px;
 }
 .marker-library :deep(.el-collapse-item__content) {
-  padding-bottom: 12px;
+  padding-bottom: 6px;
+}
+.marker-library :deep(.el-collapse-item__wrap) {
+  border-bottom: none;
 }
 </style>

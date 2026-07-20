@@ -1,5 +1,5 @@
 import type { Label, Topic } from '../model/types.js';
-import { markerGlyph } from '../markers/presets.js';
+import { PRIORITY_COLORS } from '../markers/presets.js';
 
 /** Horizontal padding inside topic box */
 export const TOPIC_PAD_X = 8;
@@ -143,16 +143,7 @@ export function layoutTopicContent(
   };
 }
 
-/** Priority marker palette (XMind-like). */
-export const PRIORITY_COLORS: Record<string, string> = {
-  'priority-1': '#E74C3C',
-  'priority-2': '#E67E22',
-  'priority-3': '#F1C40F',
-  'priority-4': '#2ECC71',
-  'priority-5': '#3498DB',
-  'priority-6': '#9B59B6',
-  'priority-7': '#95A5A6',
-};
+export { PRIORITY_COLORS };
 
 export function accessoryGlyph(kind: TopicAccessoryKind): string {
   switch (kind) {
@@ -178,15 +169,12 @@ export function layoutInnerMarkerHits(
   markers: string[],
   originX: number,
   originY: number,
-  measureGlyph: (glyph: string) => number = defaultGlyphWidth,
+  _measureGlyph: (glyph: string) => number = defaultGlyphWidth,
 ): Array<{ markerId: string; x: number; y: number; width: number; height: number }> {
   let ox = originX;
   return markers.map((markerId) => {
-    const isPriority = markerId.startsWith('priority-');
-    const glyph = markerGlyph(markerId);
-    const width = isPriority ? MARKER_SIZE : Math.max(MARKER_SIZE, measureGlyph(glyph));
-    const hit = { markerId, x: ox, y: originY, width, height: MARKER_SIZE };
-    ox += width + MARKER_GAP;
+    const hit = { markerId, x: ox, y: originY, width: MARKER_SIZE, height: MARKER_SIZE };
+    ox += MARKER_SIZE + MARKER_GAP;
     return hit;
   });
 }

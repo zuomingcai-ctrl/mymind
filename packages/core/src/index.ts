@@ -54,17 +54,22 @@ export {
   listMarkers,
   getMarker,
   markerGlyph,
+  markerColor,
   MARKER_PRESETS,
+  MARKER_PALETTE,
+  PRIORITY_COLORS,
   layoutMarkerHits,
   markerOriginForNode,
   type MarkerPreset,
+  type MarkerCategory,
+  type MarkerIconKind,
   type MarkerHitRect,
 } from './markers/presets.js';
+export { drawMarker, drawMarkerPreset } from './markers/draw.js';
 export {
   layoutTopicContent,
   listTopicAccessories,
   layoutInnerMarkerHits,
-  PRIORITY_COLORS,
   accessoryGlyph,
   estimateLabelChipWidth,
   TOPIC_PAD_X,
