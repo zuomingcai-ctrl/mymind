@@ -35,6 +35,16 @@ describe('Phase 3 core', () => {
     expect(bold).toBeGreaterThan(plain);
   });
 
+  it('measureRunsWidth uses widest line when title has hard breaks', () => {
+    const line1 = '使用了AI编程的开发任务节省的工作量占比: 33.32--->41.83%。';
+    const line2 = '部门整体节省工作量占比: 13.47%-->18.56%';
+    const single = measureRunsWidth([{ text: line1 }]);
+    const multiline = measureRunsWidth([{ text: `${line1}\n${line2}` }]);
+    const concat = measureRunsWidth([{ text: line1 + line2 }]);
+    expect(multiline).toBe(single);
+    expect(multiline).toBeLessThan(concat);
+  });
+
   it('UpdateTopicRichTitleCommand syncs title', () => {
     const doc = createDocument();
     const sheetId = doc.sheets[0]!.id;

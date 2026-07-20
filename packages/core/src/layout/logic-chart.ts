@@ -12,6 +12,8 @@ import { collectHidden, finalizeResult, LEVEL_GAP, V_GAP } from './utils.js';
 
 const BRACE_WIDTH = 16;
 const BRACE_GAP = 12;
+/** Minimum gap between a parent's child-facing edge and its children's near edge. */
+const MIN_EDGE_GAP = 24;
 
 interface LogicChartConfig {
   direction: 'left' | 'right';
@@ -35,7 +37,7 @@ function readLogicConfig(options: StructureOptions): LogicChartConfig {
     direction: options.direction,
     lineStyle: options.lineStyle ?? 'curve',
     nodeDisplay: options.nodeDisplay ?? 'mixed',
-    groupLeaves: options.groupLeaves ?? 'brace',
+    groupLeaves: options.groupLeaves ?? 'none',
     rootDisplay: options.rootDisplay ?? 'box',
   };
 }
@@ -134,14 +136,26 @@ export function layoutLogicChart(
     bandTop: number,
     parentId?: string,
     extraX = 0,
+    /** Parent's child-facing edge (right edge when direction=right, left when left). */
+    parentEdge?: number,
   ): number {
     if (hiddenIds.has(topic.id)) return 0;
     const display = resolveDisplay(topic, depth, config, hiddenIds);
     const size = measureLogicNode(topic, depth, display, measure);
-    const x =
-      config.direction === 'right'
-        ? depth * LEVEL_GAP + extraX
-        : -depth * LEVEL_GAP - size.width - extraX;
+    // Prefer depth columns for compact default spacing, but push past a wide
+    // (resized) parent so children never sit under the parent box.
+    let x: number;
+    if (config.direction === 'right') {
+      const columnX = depth * LEVEL_GAP;
+      const minX = parentEdge !== undefined ? parentEdge + MIN_EDGE_GAP : columnX;
+      x = Math.max(columnX, minX) + extraX;
+    } else {
+      const columnRight = -depth * LEVEL_GAP;
+      const maxRight =
+        parentEdge !== undefined ? parentEdge - MIN_EDGE_GAP : columnRight;
+      const right = Math.min(columnRight, maxRight) - extraX;
+      x = right - size.width;
+    }
 
     const children =
       topic.collapsed ? [] : topic.children.filter((c) => !hiddenIds.has(c.id));
@@ -184,10 +198,11 @@ export function layoutLogicChart(
     if (children.length > 0) {
       let currentY = bandTop + (blockH - childrenH) / 2;
       const childIds: string[] = [];
+      const myEdge = config.direction === 'right' ? x + size.width : x;
 
       for (let i = 0; i < children.length; i++) {
         const child = children[i]!;
-        const h = layout(child, depth + 1, currentY, topic.id, childExtraX);
+        const h = layout(child, depth + 1, currentY, topic.id, childExtraX, myEdge);
         childIds.push(child.id);
         currentY += h;
         if (i < children.length - 1) currentY += V_GAP;

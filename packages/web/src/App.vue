@@ -30,6 +30,8 @@ import {
   findTopicInSheet,
   createDefaultLayoutRegistry,
   createMeasureFn,
+  themeFontSizeResolver,
+  getTheme,
   findParentOfTopic,
   findParentInSheet,
   isFloatingTopicRoot,
@@ -226,6 +228,13 @@ const { viewport, zoomPercent, setZoom, fitContent, zoomBy, pan, ensureVisible, 
   useViewport();
 const { onWheel } = useCanvasWheel(pan, zoomBy);
 
+function sheetMeasure(sheet = activeSheet.value) {
+  if (!sheet) return createMeasureFn();
+  return createMeasureFn({
+    resolveFontSize: themeFontSizeResolver(getTheme(sheet.canvasSettings.themeId)),
+  });
+}
+
 const showNewDialog = ref(false);
 const showTemplates = ref(false);
 const showPrint = ref(false);
@@ -406,7 +415,7 @@ function computeEditorLayout(topicId: string) {
   if (!canvas) return null;
 
   const registry = createDefaultLayoutRegistry();
-  const layout = registry.layout(activeSheet.value, createMeasureFn());
+  const layout = registry.layout(activeSheet.value, sheetMeasure());
   const node = layout.nodes.get(topicId);
   if (!node) return null;
 
@@ -610,7 +619,7 @@ function onCanvasResize(width: number, height: number) {
 function fitInitial() {
   if (!activeSheet.value) return;
   const registry = createDefaultLayoutRegistry();
-  const layout = registry.layout(activeSheet.value, createMeasureFn());
+  const layout = registry.layout(activeSheet.value, sheetMeasure());
   fitContent(layout.bounds);
 }
 
@@ -676,7 +685,7 @@ async function onExportPng() {
 async function onExportSvg() {
   if (!activeSheet.value || !mindDocument.value) return;
   const registry = createDefaultLayoutRegistry();
-  const layout = registry.layout(activeSheet.value, createMeasureFn());
+  const layout = registry.layout(activeSheet.value, sheetMeasure());
   const svg = exportSvg(layout, activeSheet.value.canvasSettings.backgroundColor);
   const blob = new Blob([svg], { type: 'image/svg+xml' });
   const url = URL.createObjectURL(blob);
@@ -828,7 +837,7 @@ function onInsertRelationship() {
     nextTick(() => {
       const canvas = window.document.querySelector('.canvas-view') as HTMLCanvasElement | null;
       if (!canvas || !docStore.activeSheet) return;
-      const layout = createDefaultLayoutRegistry().layout(docStore.activeSheet, createMeasureFn());
+      const layout = createDefaultLayoutRegistry().layout(docStore.activeSheet, sheetMeasure(docStore.activeSheet));
       const edge = layout.edges.find((e) => e.id === rel.id);
       const mid = edge ? relationshipLabelPoint(edge.points) : null;
       if (!edge || !mid) return;
@@ -923,7 +932,7 @@ async function onInsertAction(id: InsertActionId) {
   if (!activeSheet.value) return;
   const result = await buildInsertAction(id, activeSheet.value, selection.value, (asset, topicId) => {
     if (topicId) {
-      const layout = createDefaultLayoutRegistry().layout(activeSheet.value!, createMeasureFn());
+      const layout = createDefaultLayoutRegistry().layout(activeSheet.value!, sheetMeasure());
       const node = layout.nodes.get(topicId);
       if (node && !node.hidden) {
         const offset = decorationOffsetBesideTopic(node, asset, activeSheet.value!.decorations.length);
@@ -1464,7 +1473,7 @@ function onAddDecoration(asset: DecorationAsset) {
   let attachedTopicId: string | undefined;
 
   if (selectedId.value) {
-    const layout = createDefaultLayoutRegistry().layout(sheet, createMeasureFn());
+    const layout = createDefaultLayoutRegistry().layout(sheet, sheetMeasure(sheet));
     const node = layout.nodes.get(selectedId.value);
     if (node && !node.hidden) {
       const offset = decorationOffsetBesideTopic(node, asset, index);
@@ -1557,7 +1566,7 @@ function onMinimapNavigate(x: number, y: number) {
 function revealTopic(topicId: string) {
   if (!activeSheet.value) return;
   const registry = createDefaultLayoutRegistry();
-  const layout = registry.layout(activeSheet.value, createMeasureFn());
+  const layout = registry.layout(activeSheet.value, sheetMeasure());
   const node = layout.nodes.get(topicId);
   if (!node || node.hidden) return;
   ensureVisible({ x: node.x, y: node.y, width: node.width, height: node.height });
@@ -1806,7 +1815,7 @@ onUnmounted(() => {
     <el-card v-if="searchResults.length && !zenActive" class="search-results" shadow="hover" body-style="padding: 0">
       <ul>
         <li v-for="r in searchResults" :key="r.topicId + r.matchField" @click="selectResult(r)">
-          {{ r.title }} — {{ r.snippet }}
+          {{ r.title }} ? {{ r.snippet }}
         </li>
       </ul>
     </el-card>

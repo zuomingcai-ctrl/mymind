@@ -1,4 +1,4 @@
-import type { Topic, Size } from '../model/types.js';
+import type { Topic, Size, Theme } from '../model/types.js';
 import { runsToPlain, measureRunsWidth } from '../model/inline-run.js';
 import { equationExtraHeight } from '../render/equation.js';
 import {
@@ -14,21 +14,29 @@ import {
 const H_PADDING = 24;
 const V_PADDING = 12;
 const MIN_WIDTH = 80;
-const LINE_HEIGHT = 20;
+/** Baseline font size used by legacy approximate widths (CJK=14, Latin=8). */
+const BASE_FONT_SIZE = 14;
+const LINE_HEIGHT_AT_BASE = 20;
 /** Default: no wrap cap — topic width follows text (autosize / 「适合」). */
 const DEFAULT_MAX_TEXT_WIDTH = Number.POSITIVE_INFINITY;
+
+export type FontSizeResolver = (topic: Topic, depth: number) => number;
 
 export interface TextMeasurerOptions {
   font?: string;
   /** When finite, plain text wraps to this content width. Default: unlimited (autosize). */
   maxTextWidth?: number;
+  /** Effective font size for layout (topic override / theme by depth). Default: 14. */
+  resolveFontSize?: FontSizeResolver;
 }
 
-/** Approximate CJK/Latin character widths (matches TextMeasurer). */
-export function approximateLineWidth(text: string): number {
+/** Approximate CJK/Latin character widths (matches TextMeasurer / canvas wrap). */
+export function approximateLineWidth(text: string, fontSize = BASE_FONT_SIZE): number {
+  const cjk = fontSize;
+  const latin = fontSize * (8 / BASE_FONT_SIZE);
   let width = 0;
   for (const ch of text) {
-    width += ch.charCodeAt(0) > 127 ? 14 : 8;
+    width += ch.charCodeAt(0) > 127 ? cjk : latin;
   }
   return width;
 }
@@ -62,30 +70,54 @@ export function wrapPlainText(
   return lines.length ? lines : [''];
 }
 
+/** Theme level font size by depth; topic.style.fontSize wins when set. */
+export function themeFontSizeResolver(theme: Theme): FontSizeResolver {
+  return (topic, depth) => {
+    if (topic.style?.fontSize && topic.style.fontSize > 0) return topic.style.fontSize;
+    const level =
+      depth <= 0
+        ? theme.colors.centralTopic
+        : depth === 1
+          ? theme.colors.mainTopic
+          : theme.colors.subTopic;
+    return level.fontSize ?? BASE_FONT_SIZE;
+  };
+}
+
 export class TextMeasurer {
   private maxTextWidth: number;
+  private resolveFontSize: FontSizeResolver;
   private charWidthCache = new Map<string, number>();
 
   constructor(options: TextMeasurerOptions = {}) {
     this.maxTextWidth = options.maxTextWidth ?? DEFAULT_MAX_TEXT_WIDTH;
+    this.resolveFontSize =
+      options.resolveFontSize ??
+      ((topic) =>
+        topic.style?.fontSize && topic.style.fontSize > 0
+          ? topic.style.fontSize
+          : BASE_FONT_SIZE);
   }
 
   measureText(
     text: string,
     maxTextWidth = this.maxTextWidth,
+    fontSize = BASE_FONT_SIZE,
   ): { width: number; height: number; lines: string[] } {
-    const lines = wrapPlainText(text, maxTextWidth, (s) => this.measureLine(s));
-    const lineWidth = Math.max(...lines.map((l) => this.measureLine(l)), 0);
+    const lines = wrapPlainText(text, maxTextWidth, (s) => this.measureLine(s, fontSize));
+    const lineWidth = Math.max(...lines.map((l) => this.measureLine(l, fontSize)), 0);
     const padded = lineWidth + H_PADDING;
     const width = Number.isFinite(maxTextWidth)
       ? Math.min(padded, maxTextWidth + H_PADDING)
       : padded;
-    const height = lines.length * LINE_HEIGHT + V_PADDING;
+    const lineHeight = Math.max(16, (LINE_HEIGHT_AT_BASE / BASE_FONT_SIZE) * fontSize);
+    const height = lines.length * lineHeight + V_PADDING;
     return { width: Math.max(width, MIN_WIDTH), height, lines };
   }
 
-  measureTopic(topic: Topic, _depth: number): Size {
+  measureTopic(topic: Topic, depth: number): Size {
     const text = topic.titleRich ? runsToPlain(topic.titleRich) : topic.title || ' ';
+    const fontSize = this.resolveFontSize(topic, depth);
     const fixedWidth = resolveFixedTopicWidth(topic);
 
     const markersW = estimateMarkersWidth(topic.markers.length);
@@ -100,12 +132,12 @@ export class TextMeasurer {
 
     let textBlock: { width: number; height: number; lines: string[] };
     if (topic.titleRich && !fixedWidth) {
-      // Single-line rich text until wrap is implemented per-run
-      const richW = measureRunsWidth(topic.titleRich) + H_PADDING;
-      const plain = this.measureText(text, contentMax);
+      // Rich width respects hard breaks; scale with effective font size.
+      const richW = measureRunsWidth(topic.titleRich, fontSize) + H_PADDING;
+      const plain = this.measureText(text, contentMax, fontSize);
       textBlock = { width: Math.max(richW, MIN_WIDTH), height: plain.height, lines: plain.lines };
     } else {
-      textBlock = this.measureText(text, contentMax);
+      textBlock = this.measureText(text, contentMax, fontSize);
     }
 
     let totalHeight = textBlock.height;
@@ -139,12 +171,13 @@ export class TextMeasurer {
     return { width: totalWidth, height: totalHeight };
   }
 
-  private measureLine(text: string): number {
-    if (this.charWidthCache.has(text)) {
-      return this.charWidthCache.get(text)!;
+  private measureLine(text: string, fontSize: number): number {
+    const key = `${fontSize}\0${text}`;
+    if (this.charWidthCache.has(key)) {
+      return this.charWidthCache.get(key)!;
     }
-    const width = approximateLineWidth(text);
-    this.charWidthCache.set(text, width);
+    const width = approximateLineWidth(text, fontSize);
+    this.charWidthCache.set(key, width);
     return width;
   }
 }
@@ -161,6 +194,12 @@ export function resolveFixedTopicWidth(topic: Topic): number | undefined {
   return undefined;
 }
 
-export function createMeasureFn(measurer = new TextMeasurer()): (topic: Topic, depth: number) => Size {
+export function createMeasureFn(
+  measurerOrOptions: TextMeasurer | TextMeasurerOptions = new TextMeasurer(),
+): (topic: Topic, depth: number) => Size {
+  const measurer =
+    measurerOrOptions instanceof TextMeasurer
+      ? measurerOrOptions
+      : new TextMeasurer(measurerOrOptions);
   return (topic, depth) => measurer.measureTopic(topic, depth);
 }

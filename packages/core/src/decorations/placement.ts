@@ -15,7 +15,9 @@ export interface DecorationWorldRect {
  */
 export function resolveDecorationWorldRect(
   dec: CanvasDecoration,
-  nodes: Map<string, LayoutNode> | ReadonlyMap<string, LayoutNode>,
+  nodes:
+    | Map<string, Pick<LayoutNode, 'x' | 'y' | 'width' | 'height' | 'hidden'>>
+    | ReadonlyMap<string, Pick<LayoutNode, 'x' | 'y' | 'width' | 'height' | 'hidden'>>,
 ): DecorationWorldRect {
   if (dec.attachedTopicId) {
     const node = nodes.get(dec.attachedTopicId);

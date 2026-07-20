@@ -17,6 +17,7 @@ describe('structure option semantics', () => {
       braceSide: 'right',
       partPosition: 'opposite',
     });
+    expect(defaultStructureOptions('logic-chart')).toMatchObject({ groupLeaves: 'none' });
     const tt = defaultStructureOptions('tree-table') as Extract<
       ReturnType<typeof defaultStructureOptions>,
       { type: 'tree-table' }

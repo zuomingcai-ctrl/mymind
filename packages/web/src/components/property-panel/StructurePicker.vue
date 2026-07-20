@@ -89,6 +89,16 @@ function onMatrixSize(rows: number, cols: number) {
   while (titles.length < count) titles.push(`象限${titles.length + 1}`);
   patchMatrix({ rows, cols, titles: titles.slice(0, count) });
 }
+
+function onMatrixRowsChange(v: number | undefined) {
+  if (v == null || opts.value.type !== 'matrix') return;
+  onMatrixSize(v, opts.value.cols);
+}
+
+function onMatrixColsChange(v: number | undefined) {
+  if (v == null || opts.value.type !== 'matrix') return;
+  onMatrixSize(opts.value.rows, v);
+}
 </script>
 
 <template>
@@ -262,7 +272,7 @@ function onMatrixSize(rows: number, cols: number) {
           :min="1"
           :max="6"
           controls-position="right"
-          @change="(v: number | undefined) => v != null && onMatrixSize(v, opts.cols)"
+          @change="onMatrixRowsChange"
         />
       </el-form-item>
       <el-form-item label="列数">
@@ -271,7 +281,7 @@ function onMatrixSize(rows: number, cols: number) {
           :min="1"
           :max="6"
           controls-position="right"
-          @change="(v: number | undefined) => v != null && onMatrixSize(opts.rows, v)"
+          @change="onMatrixColsChange"
         />
       </el-form-item>
       <el-form-item label="象限标题">

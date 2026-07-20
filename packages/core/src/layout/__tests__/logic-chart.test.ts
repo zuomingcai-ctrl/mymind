@@ -45,15 +45,32 @@ describe('logic-chart layout', () => {
     expect(result.edges[0]!.points.length).toBe(4);
   });
 
-  it('renders leaf siblings as underline with brace', () => {
+  it('renders leaf siblings as underline with brace when groupLeaves=brace', () => {
     const doc = createDocument('x', 'logic-chart');
     const sheet = doc.sheets[0]!;
+    sheet.structureOptions = {
+      type: 'logic-chart',
+      direction: 'right',
+      lineStyle: 'curve',
+      nodeDisplay: 'mixed',
+      groupLeaves: 'brace',
+      rootDisplay: 'box',
+    };
     let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'a').execute(doc);
     d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'b').execute(d);
     const result = layoutLogicChart(d.sheets[0]!.rootTopic, d.sheets[0]!.structureOptions, measure);
     const leaves = [...result.nodes.values()].filter((n) => n.depth === 1);
     expect(leaves.every((n) => n.display === 'underline')).toBe(true);
     expect(result.extraShapes.some((s) => s.type === 'brace')).toBe(true);
+  });
+
+  it('defaults to no leaf brace grouping', () => {
+    const doc = createDocument('x', 'logic-chart');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'a').execute(doc);
+    d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, 'b').execute(d);
+    const result = layoutLogicChart(d.sheets[0]!.rootTopic, d.sheets[0]!.structureOptions, measure);
+    expect(result.extraShapes.some((s) => s.type === 'brace')).toBe(false);
   });
 
   it('underline nodes autosize CJK titles without wrapping width', () => {
@@ -92,6 +109,36 @@ describe('logic-chart layout', () => {
     const edge = result.edges.find((e) => e.to === childId)!;
     const end = edge.points[edge.points.length - 1]!;
     expect(end.y).toBe(leaf.y + leaf.height);
+  });
+
+  it('pushes children past a wide resized parent', () => {
+    const doc = createDocument('x', 'logic-chart');
+    const sheet = doc.sheets[0]!;
+    let d = new AddTopicCommand(sheet.id, sheet.rootTopic.id, '分支主题').execute(doc);
+    const branchId = d.sheets[0]!.rootTopic.children[0]!.id;
+    d = new AddTopicCommand(sheet.id, branchId, '子主题1').execute(d);
+    d = new AddTopicCommand(sheet.id, branchId, '子主题2').execute(d);
+    const branch = d.sheets[0]!.rootTopic.children[0]!;
+    branch.style = { ...branch.style, width: 320, widthMode: 'fixed' };
+
+    const result = layoutLogicChart(
+      d.sheets[0]!.rootTopic,
+      d.sheets[0]!.structureOptions,
+      measure,
+    );
+    const parent = result.nodes.get(branchId)!;
+    const kids = branch.children.map((c) => result.nodes.get(c.id)!);
+    for (const kid of kids) {
+      expect(kid.x).toBeGreaterThanOrEqual(parent.x + parent.width + 24);
+    }
+    for (const kid of kids) {
+      const edge = result.edges.find((e) => e.from === branchId && e.to === kid.id)!;
+      const start = edge.points[0]!;
+      const end = edge.points[edge.points.length - 1]!;
+      expect(start.x).toBe(parent.x + parent.width);
+      expect(end.x).toBe(kid.x);
+      expect(end.x).toBeGreaterThan(start.x);
+    }
   });
 
   it('uses polyline edges when configured', () => {

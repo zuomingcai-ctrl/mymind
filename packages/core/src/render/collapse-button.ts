@@ -111,13 +111,19 @@ function exitSideFromEdge(points: Point[]): CollapseSide | null {
   return dy >= 0 ? 'bottom' : 'top';
 }
 
+/** Y where tree edges leave/enter a topic (matches logic-chart / fishbone anchors). */
+export function collapseAnchorY(node: LayoutNode): number {
+  // Underline topics connect on the baseline; boxes at mid-height.
+  return node.display === 'underline' ? node.y + node.height : node.y + node.height / 2;
+}
+
 export function collapseButtonCenter(
   node: LayoutNode,
   side: CollapseSide,
   radius = COLLAPSE_BTN_RADIUS,
 ): Point {
   const midX = node.x + node.width / 2;
-  const midY = node.y + node.height / 2;
+  const midY = collapseAnchorY(node);
   switch (side) {
     case 'left':
       return { x: node.x - radius, y: midY };

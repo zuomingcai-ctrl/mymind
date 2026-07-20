@@ -3,6 +3,8 @@ import { ref, watch, onMounted } from 'vue';
 import {
   createDefaultLayoutRegistry,
   createMeasureFn,
+  themeFontSizeResolver,
+  getTheme,
   type Sheet,
   type Viewport,
 } from '@mymind/core';
@@ -20,7 +22,12 @@ const emit = defineEmits<{
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const registry = createDefaultLayoutRegistry();
-const measure = createMeasureFn();
+
+function measureForSheet(sheet: Sheet) {
+  return createMeasureFn({
+    resolveFontSize: themeFontSizeResolver(getTheme(sheet.canvasSettings.themeId)),
+  });
+}
 
 function draw() {
   const canvas = canvasRef.value;
@@ -33,7 +40,7 @@ function draw() {
   ctx.fillStyle = '#fafafa';
   ctx.fillRect(0, 0, w, h);
 
-  const layout = registry.layout(props.sheet, measure);
+  const layout = registry.layout(props.sheet, measureForSheet(props.sheet));
   const { bounds } = layout;
   if (bounds.width <= 0 || bounds.height <= 0) return;
   const scale = Math.min(w / (bounds.width + 40), h / (bounds.height + 40));
@@ -59,7 +66,7 @@ function draw() {
 function onClick(e: MouseEvent) {
   if (!props.sheet || !canvasRef.value) return;
   const rect = canvasRef.value.getBoundingClientRect();
-  const layout = registry.layout(props.sheet, measure);
+  const layout = registry.layout(props.sheet, measureForSheet(props.sheet));
   const { bounds } = layout;
   const scale = Math.min(140 / (bounds.width + 40), 100 / (bounds.height + 40));
   const ox = -bounds.x * scale + 10;

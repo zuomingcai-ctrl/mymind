@@ -23,8 +23,26 @@ export function measureRunWidth(run: InlineRun, baseFontSize = 14): number {
   return width;
 }
 
+/**
+ * Width of rich title for autosize. Hard line breaks (`\\n`) start a new line;
+ * the result is the widest line — not the sum of all characters as one line.
+ */
 export function measureRunsWidth(runs: InlineRun[], baseFontSize = 14): number {
-  return runs.reduce((sum, r) => sum + measureRunWidth(r, baseFontSize), 0);
+  let maxLine = 0;
+  let current = 0;
+  for (const run of runs) {
+    const size = run.fontSize ?? baseFontSize;
+    const factor = run.bold ? 1.1 : 1;
+    for (const ch of run.text) {
+      if (ch === '\n') {
+        maxLine = Math.max(maxLine, current);
+        current = 0;
+        continue;
+      }
+      current += (ch.charCodeAt(0) > 127 ? size : size * 0.55) * factor;
+    }
+  }
+  return Math.max(maxLine, current);
 }
 
 export function mergeRuns(a: InlineRun[], b: InlineRun[]): InlineRun[] {

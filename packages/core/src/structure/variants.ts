@@ -100,7 +100,7 @@ function logic(
       direction: opts.direction ?? 'right',
       lineStyle: opts.lineStyle ?? 'curve',
       nodeDisplay: opts.nodeDisplay ?? 'mixed',
-      groupLeaves: opts.groupLeaves ?? 'brace',
+      groupLeaves: opts.groupLeaves ?? 'none',
       rootDisplay: opts.rootDisplay ?? 'box',
     },
     preview,

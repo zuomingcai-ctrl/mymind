@@ -94,6 +94,9 @@ export {
   wrapPlainText,
   approximateLineWidth,
   resolveFixedTopicWidth,
+  themeFontSizeResolver,
+  type FontSizeResolver,
+  type TextMeasurerOptions,
 } from './layout/measure.js';
 export { LayoutRegistry, createDefaultLayoutRegistry } from './layout/registry.js';
 export { buildFrame } from './render/pipeline.js';

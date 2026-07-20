@@ -3,6 +3,7 @@ import { ref, watch, onMounted, onUnmounted, computed } from 'vue';
 import {
   createDefaultLayoutRegistry,
   createMeasureFn,
+  themeFontSizeResolver,
   buildFrame,
   hitTestTopic,
   hitTestRelationship,
@@ -164,7 +165,14 @@ const canvasCursor = computed(() => {
 
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 const registry = createDefaultLayoutRegistry();
-const baseMeasure = createMeasureFn();
+
+function resolveFontSize(topic: Topic, depth: number): number {
+  const sheet = props.sheet;
+  if (!sheet) return 14;
+  return themeFontSizeResolver(getTheme(sheet.canvasSettings.themeId))(topic, depth);
+}
+
+const baseMeasure = createMeasureFn({ resolveFontSize });
 
 const widthResizeDrag = ref<{
   topicId: string;
@@ -507,7 +515,7 @@ function fillTopicTextInBand(
     ? content.accessoriesOrigin.x - 4
     : node.x + node.width - 8;
   const maxW = Math.max(8, right - left);
-  const lines = wrapPlainText(title, maxW, approximateLineWidth);
+  const lines = wrapPlainText(title, maxW, (s) => approximateLineWidth(s, fontSize));
   const lineH = Math.max(16, fontSize * 1.35);
   const blockH = lines.length * lineH;
   const startY = node.y + Math.max(lineH / 2, (content.titleBandHeight - blockH) / 2 + lineH / 2);
@@ -984,13 +992,6 @@ function onMouseDown(event: MouseEvent) {
         const collapseHit = hitTestCollapseButton(world, sheet, layout);
         if (collapseHit) {
           suppressNextClick = true;
-          emit('select-structure', null);
-          emit('select', {
-            id: collapseHit.topicId,
-            shiftKey: false,
-            ctrlKey: false,
-            metaKey: false,
-          });
           emit('toggle-collapse', collapseHit.topicId);
           event.preventDefault();
           return;
@@ -1439,12 +1440,6 @@ function onClick(event: MouseEvent) {
         const layout = registry.layout(props.sheet, measure);
         const collapseHit = hitTestCollapseButton(world, props.sheet, layout);
         if (collapseHit) {
-          emit('select', {
-            id: collapseHit.topicId,
-            shiftKey: false,
-            ctrlKey: false,
-            metaKey: false,
-          });
           emit('toggle-collapse', collapseHit.topicId);
           return;
         }

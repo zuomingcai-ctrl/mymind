@@ -64,6 +64,21 @@ describe('collapse-button', () => {
     });
   });
 
+  it('collapseButtonCenter sits on the baseline for underline topics', () => {
+    const n: LayoutNode = {
+      ...node('u', 10, 20, 100, 40),
+      display: 'underline',
+    };
+    expect(collapseButtonCenter(n, 'right')).toEqual({
+      x: 10 + 100 + COLLAPSE_BTN_RADIUS,
+      y: 20 + 40,
+    });
+    expect(collapseButtonCenter(n, 'left')).toEqual({
+      x: 10 - COLLAPSE_BTN_RADIUS,
+      y: 60,
+    });
+  });
+
   it('inferCollapseSide uses edge exit direction', () => {
     const parent = node('p', 0, 0, 80, 30);
     const c1 = node('c1', 120, -20);

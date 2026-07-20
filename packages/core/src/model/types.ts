@@ -431,7 +431,7 @@ export function defaultStructureOptions(type: StructureType): StructureOptions {
         direction: 'right',
         lineStyle: 'curve',
         nodeDisplay: 'mixed',
-        groupLeaves: 'brace',
+        groupLeaves: 'none',
         rootDisplay: 'box',
       };
     case 'tree-chart':

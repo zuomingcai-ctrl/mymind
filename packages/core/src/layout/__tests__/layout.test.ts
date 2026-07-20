@@ -1,6 +1,6 @@
 // covers: TE-003, ST-001, ST-002, ST-003, ED-009, PS-006
 import { describe, it, expect } from 'vitest';
-import { createDocument } from '../../model/factory.js';
+import { createDocument, createTopic } from '../../model/factory.js';
 import { AddTopicCommand, ToggleCollapseCommand } from '../../commands/topic-commands.js';
 import { UpdateTopicStyleCommand } from '../../commands/phase4-commands.js';
 import { TextMeasurer, createMeasureFn, wrapPlainText } from '../measure.js';
@@ -29,6 +29,31 @@ describe('layout', () => {
     const size = m.measureText(long);
     expect(size.lines).toHaveLength(1);
     expect(size.width).toBeGreaterThan(200);
+  });
+
+  it('autosize titleRich with hard breaks uses widest line, not concatenated width', () => {
+    const m = new TextMeasurer();
+    const line1 = '使用了AI编程的开发任务节省的工作量占比: 33.32--->41.83%。';
+    const line2 = '部门整体节省工作量占比: 13.47%-->18.56%';
+    const multi = createTopic(`${line1}\n${line2}`);
+    multi.titleRich = [{ text: multi.title }];
+    const one = createTopic(line1);
+    one.titleRich = [{ text: line1 }];
+    const size = m.measureTopic(multi, 0);
+    const oneLine = m.measureTopic(one, 0);
+    expect(size.height).toBeGreaterThan(oneLine.height);
+    expect(size.width).toBe(oneLine.width);
+  });
+
+  it('measureTopic scales width with effective fontSize (subtopic 12 vs base 14)', () => {
+    const title = '使用了AI编程的开发任务节省的工作量占比: 33.32--->41.83%。';
+    const at14 = new TextMeasurer().measureTopic(createTopic(title), 2);
+    const at12 = new TextMeasurer({
+      resolveFontSize: () => 12,
+    }).measureTopic(createTopic(title), 2);
+    expect(at12.width).toBeLessThan(at14.width);
+    // Roughly 12/14 of the text portion (padding is fixed).
+    expect(at12.width).toBeGreaterThan(at14.width * 0.8);
   });
 
   it('fixed topic width wraps text and grows height', () => {
